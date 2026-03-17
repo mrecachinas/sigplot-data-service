@@ -52,7 +52,7 @@ export default function App() {
       } else {
         const filePath = path ? `${path}/${file.filename}` : file.filename;
         setRawHref(getFileUrl(filePath, 'fs', selectedLocation));
-        setSdsHref(getFileUrl(filePath, 'hdr', selectedLocation));
+        setSdsHref(getFileUrl(filePath, 'fs', selectedLocation));
       }
     },
     [selectedLocation, path]
