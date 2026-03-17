@@ -36,36 +36,63 @@ func GetCachedPalette(colorMap string, numColors int) []Pixel {
 }
 
 func MakeColorPalette(controlColors []Pixel, numColors int) []Pixel {
-	colorsPerPosition := numColors / 100.0
-	lastPoint := controlColors[0]
-
-	// If first control color is not at 0 then copy color for range
-	lastIndexFilled := 0
-	outColors := make([]Pixel, numColors)
-	outColors[0] = Pixel{
-		Red:   math.Round(controlColors[0].Red * 255.0 / 100.0),
-		Blue:  math.Round(controlColors[0].Blue * 255.0 / 100.0),
-		Green: math.Round(controlColors[0].Green * 255.0 / 100.0),
-	}
-	for controlColorIndex, controlColor := range controlColors[1:] {
-		redDiff := (controlColor.Red - lastPoint.Red) * 255.0 / 100
-		greenDiff := (controlColor.Green - lastPoint.Green) * 255.0 / 100
-		blueDiff := (controlColor.Blue - lastPoint.Blue) * 255.0 / 100
-		startRange := lastIndexFilled + 1
-		endRange := int(math.Round(controlColor.Position * float64(colorsPerPosition)))
-		for j := startRange; j < endRange; j++ {
-			percentRange := (float64(j+1) - float64(startRange)) / float64(endRange-startRange)
-			outColors[j] = Pixel{
-				Position: float64(j),
-				Red:      math.Round(percentRange*redDiff + float64(lastPoint.Red)*255.0/100),
-				Green:    math.Round(percentRange*greenDiff + float64(lastPoint.Green)*255.0/100),
-				Blue:     math.Round(percentRange*blueDiff + float64(lastPoint.Blue)*255.0/100),
-			}
-			lastIndexFilled = j
+	// Convert control colors from 0-100 percentage to 0-255 (matching sigplot's _parseColors)
+	colors := make([]Pixel, len(controlColors))
+	for i, c := range controlColors {
+		colors[i] = Pixel{
+			Position: c.Position,
+			Red:      math.Floor(math.Round(255.0 * (c.Red / 100.0))),
+			Green:    math.Floor(math.Round(255.0 * (c.Green / 100.0))),
+			Blue:     math.Floor(math.Round(255.0 * (c.Blue / 100.0))),
 		}
-		lastPoint = controlColors[controlColorIndex]
 	}
-	return outColors
+
+	// Exact port of sigplot's ColorMap constructor loop
+	palette := make([]Pixel, 0, numColors)
+	colorindex := 1     // index into colors[] for next boundary
+	colorBlockIndex := 1.0
+
+	col1 := colors[0]
+	col2 := colors[1]
+	colorStop := colors[1].Position - colors[0].Position
+	colorsInBlock := float64(numColors) * (colorStop / 100.0)
+	factorStep := 1.0 / colorsInBlock
+
+	for n := 0; n < numColors-2; n++ {
+		if colorBlockIndex > colorsInBlock {
+			col1 = colors[colorindex]
+			col2Idx := colorindex + 1
+			if col2Idx >= len(colors) {
+				break
+			}
+			col2 = colors[col2Idx]
+			if col1.Position >= 100 && col2.Position >= 100 {
+				break
+			}
+			colorStop = col2.Position - col1.Position
+			colorsInBlock = float64(numColors) * (colorStop / 100.0)
+			factorStep = 1.0 / colorsInBlock
+			colorBlockIndex = 1.0
+			colorindex++
+		}
+		factor := factorStep * colorBlockIndex
+		palette = append(palette, Pixel{
+			Red:   col1.Red + factor*(col2.Red-col1.Red),
+			Green: col1.Green + factor*(col2.Green-col1.Green),
+			Blue:  col1.Blue + factor*(col2.Blue-col1.Blue),
+		})
+		colorBlockIndex++
+	}
+
+	// Add last control color, then prepend first (sigplot behavior)
+	lastIdx := colorindex
+	if lastIdx >= len(colors) {
+		lastIdx = len(colors) - 1
+	}
+	palette = append(palette, colors[lastIdx])
+	palette = append([]Pixel{colors[0]}, palette...)
+
+	return palette
 }
 
 func GetColorControlPoints(colorMap string) []Pixel {
@@ -81,7 +108,7 @@ func GetColorControlPoints(colorMap string) []Pixel {
 			{0, 0, 0, 15},
 			{10, 0, 0, 50},
 			{31, 0, 65, 75},
-			{50, 0, 80, 0},
+			{50, 0, 85, 0},
 			{70, 75, 80, 0},
 			{83, 100, 60, 0},
 			{100, 100, 0, 0},
@@ -143,7 +170,7 @@ func GetColorControlPoints(colorMap string) []Pixel {
 			{0, 0, 0, 15},
 			{10, 0, 0, 50},
 			{31, 0, 65, 75},
-			{50, 0, 80, 0},
+			{50, 0, 85, 0},
 			{70, 75, 80, 0},
 			{83, 100, 60, 0},
 			{100, 100, 0, 0},

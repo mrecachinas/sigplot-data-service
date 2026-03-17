@@ -701,8 +701,8 @@ func TestMiddlePoints20LogColormapMax(t *testing.T) {
 
 func TestMiddlePoints20LogColormapMiddle(t *testing.T) {
 	expectedReturn := make([]byte, 4)
-	expectedReturn[0] = 0 //Input Data 2. 20*log10(2*2) = 6.02. By setting the zmax to 0, "12.041199826559", the colormap should return the middle value which is 0,204,0.
-	expectedReturn[1] = 204
+	expectedReturn[0] = 0 //Input Data 2. 20*log10(2*2) = 6.02. By setting the zmax to "12.041199826559", the colormap should return the middle value which is 0,217,0.
+	expectedReturn[1] = 217
 	expectedReturn[2] = 0
 	expectedReturn[3] = 255 //Alpha is always 255
 	BaseicRDSHandlerColormap(t, "mydata_SB_60_60.tmp", 17, 20, 18, 21, 1, 1, "first", "L2", "Ramp Colormap", "0", "12.041199826559", 200, expectedReturn)

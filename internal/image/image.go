@@ -200,16 +200,22 @@ func CreateOutput(dataIn []float64, fileFormat string, zmin, zmax float64, color
 	// }
 
 	dataOut := new(bytes.Buffer)
-	numColors := 1000
+	numColors := 500
 	if fileFormat == "RGBA" {
 		colorPalette := GetCachedPalette(colorMap, numColors)
 		if zmax != zmin {
-			colorsPerSpan := (zmax - zmin) / float64(numColors)
+			fscale := float64(len(colorPalette)) / (zmax - zmin)
+			maxIndex := len(colorPalette) - 1
 			output := make([]byte, len(dataIn)*4)
 			for i, v := range dataIn {
-				colorIndex := math.Round((v-zmin)/colorsPerSpan) - 1
-				colorIndex = math.Min(math.Max(colorIndex, 0), float64(numColors-1))
-				ci := int(colorIndex)
+				n := (v - zmin) * fscale
+				ci := int(n)
+				if ci > maxIndex {
+					ci = maxIndex
+				}
+				if ci < 0 {
+					ci = 0
+				}
 				offset := i * 4
 				output[offset] = byte(colorPalette[ci].Red)
 				output[offset+1] = byte(colorPalette[ci].Green)
