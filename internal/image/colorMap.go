@@ -3,6 +3,8 @@ package image
 import (
 	"log"
 	"math"
+	"strconv"
+	"sync"
 )
 
 type Pixel struct {
@@ -10,6 +12,27 @@ type Pixel struct {
 	Red      float64
 	Green    float64
 	Blue     float64
+}
+
+var paletteCache = make(map[string][]Pixel)
+var paletteMu sync.RWMutex
+
+func GetCachedPalette(colorMap string, numColors int) []Pixel {
+	key := colorMap + ":" + strconv.Itoa(numColors)
+	paletteMu.RLock()
+	if p, ok := paletteCache[key]; ok {
+		paletteMu.RUnlock()
+		return p
+	}
+	paletteMu.RUnlock()
+
+	controlColors := GetColorControlPoints(colorMap)
+	palette := MakeColorPalette(controlColors, numColors)
+
+	paletteMu.Lock()
+	paletteCache[key] = palette
+	paletteMu.Unlock()
+	return palette
 }
 
 func MakeColorPalette(controlColors []Pixel, numColors int) []Pixel {

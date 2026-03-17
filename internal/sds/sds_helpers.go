@@ -19,6 +19,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -78,19 +79,22 @@ func IntInSlice(a int, list []int) bool {
 	return false
 }
 
-func GetBytesFromReader(reader io.ReadSeeker, firstByte int, numbytes int) ([]byte, bool) {
+func getBytesFromReaderMu(reader io.ReadSeeker, firstByte int, numbytes int, mu *sync.Mutex) ([]byte, bool) {
 	outData := make([]byte, numbytes)
-	// Multiple Concurrent goroutines will use this function with the same reader.
-	IoMutex.Lock()
+	mu.Lock()
 	reader.Seek(int64(firstByte), io.SeekStart)
 	numRead, err := reader.Read(outData)
-	IoMutex.Unlock()
+	mu.Unlock()
 
 	if numRead != numbytes || err != nil {
 		log.Println("Failed to Read Requested Bytes", err, numRead, numbytes)
 		return outData, false
 	}
 	return outData, true
+}
+
+func GetBytesFromReader(reader io.ReadSeeker, firstByte int, numbytes int) ([]byte, bool) {
+	return getBytesFromReaderMu(reader, firstByte, numbytes, IoMutex)
 }
 
 func ProcessLine(outData []float64, outLineNum int, done chan bool, dataRequest RdsRequest) {
@@ -106,7 +110,11 @@ func ProcessLine(outData []float64, outLineNum int, done chan bool, dataRequest 
 
 	bytesLength := float64(dataRequest.Xsize)*bytesPerElement + (firstDataByte - float64(firstByteInt))
 	bytesLengthInt := int(math.Ceil(bytesLength))
-	filedata, _ := GetBytesFromReader(dataRequest.Reader, dataRequest.FileDataOffset+firstByteInt, bytesLengthInt)
+	mu := dataRequest.ReaderMutex
+	if mu == nil {
+		mu = IoMutex
+	}
+	filedata, _ := getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+firstByteInt, bytesLengthInt, mu)
 	dataToProcess := bluefile.ConvertFileData(filedata, dataRequest.FileFormat)
 
 	//If the data is SP then we might have processed a few more bits than we actually needed on both sides, so reassign data_to_process to correctly point to the numbers of interest
@@ -305,6 +313,11 @@ func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
 		bytesPerElement = bytesPerElement * 2
 	}
 
+	mu := dataRequest.ReaderMutex
+	if mu == nil {
+		mu = IoMutex
+	}
+
 	// Get the slice data out of the file. For x the data is continuous, for y cuts, we need to grab one element from each row.
 	filedata := make([]byte, 0, int(math.Max(float64(dataRequest.FileXSize), float64(dataRequest.FileYSize))))
 	var dataToProcess []float64
@@ -313,7 +326,7 @@ func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
 		firstByteInt := int(math.Floor(firstDataByte))
 		bytesLength := float64(dataRequest.Xsize)*bytesPerElement + (firstDataByte - float64(firstByteInt))
 		bytesLengthInt := int(math.Ceil(bytesLength))
-		filedata, _ = GetBytesFromReader(dataRequest.Reader, dataRequest.FileDataOffset+firstByteInt, bytesLengthInt)
+		filedata, _ = getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+firstByteInt, bytesLengthInt, mu)
 		dataToProcess = bluefile.ConvertFileData(filedata, dataRequest.FileFormat)
 		//If the data is SP then we might have processed a few more bits than we actually needed on both sides, so reassign data_to_process to correctly point to the numbers of interest
 		if bytesPerAtom < 1 {
@@ -336,7 +349,7 @@ func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
 		for row := dataRequest.Ystart; row < (dataRequest.Ystart + dataRequest.Ysize); row++ {
 			dataByte := float64(row*dataRequest.FileXSize+dataRequest.Xstart) * bytesPerElement
 			dataByteInt := int(math.Floor(dataByte))
-			data, _ := GetBytesFromReader(dataRequest.Reader, dataRequest.FileDataOffset+dataByteInt, int(bytesPerElement))
+			data, _ := getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+dataByteInt, int(bytesPerElement), mu)
 			filedata = append(filedata, data...)
 		}
 		dataToProcess = bluefile.ConvertFileData(filedata, dataRequest.FileFormat)

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -97,6 +98,7 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 		if err != nil {
 			return c.String(http.StatusBadRequest, err.Error())
 		}
+		rdsRequest.ReaderMutex = &sync.Mutex{}
 
 		if strings.Contains(rdsRequest.FileName, ".tmp") || strings.Contains(rdsRequest.FileName, ".prm") {
 			rdsRequest.ProcessBlueFileHeader()

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -114,6 +115,7 @@ func (a *API) GetRDSTile(c echo.Context) error {
 		if openErr != nil {
 			return c.String(http.StatusBadRequest, openErr.Error())
 		}
+		tileRequest.ReaderMutex = &sync.Mutex{}
 
 		if strings.Contains(tileRequest.FileName, ".tmp") || strings.Contains(tileRequest.FileName, ".prm") {
 			tileRequest.ProcessBlueFileHeader()

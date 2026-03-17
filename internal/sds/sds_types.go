@@ -42,6 +42,7 @@ type RdsRequest struct {
 	Transform      string `query:"transform"`
 	ColorMap       string `query:"colormap"`
 	Reader         io.ReadSeeker
+	ReaderMutex    *sync.Mutex
 	Cxmode         string `query:"cxmode"`
 	CxmodeSet      bool
 	OutputFmt      string  `query:"outfmt"`

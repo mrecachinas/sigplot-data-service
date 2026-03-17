@@ -151,16 +151,17 @@ func Transform(dataIn []float64, transform string) float64 {
 		}
 		return num
 	case "maxabs":
-		absnums := make([]float64, len(dataIn))
-		for i := 0; i < len(dataIn); i++ {
-			absnums[i] = math.Abs(dataIn[i])
+		maxVal := math.Abs(dataIn[0])
+		for _, v := range dataIn[1:] {
+			if av := math.Abs(v); av > maxVal {
+				maxVal = av
+			}
 		}
-		num := floats.Max(absnums[:])
-		if math.IsNaN(num) {
+		if math.IsNaN(maxVal) {
 			log.Println("DoTransform produced NaN")
-			num = 0
+			maxVal = 0
 		}
-		return num
+		return maxVal
 	case "first":
 		num := dataIn[0]
 		if math.IsNaN(num) {
@@ -190,32 +191,35 @@ func CreateOutput(dataIn []float64, fileFormat string, zmin, zmax float64, color
 	dataOut := new(bytes.Buffer)
 	numColors := 1000
 	if fileFormat == "RGBA" {
-		controlColors := GetColorControlPoints(colorMap)
-		colorPalette := MakeColorPalette(controlColors, numColors)
+		colorPalette := GetCachedPalette(colorMap, numColors)
 		if zmax != zmin {
 			colorsPerSpan := (zmax - zmin) / float64(numColors)
-			for i := 0; i < len(dataIn); i++ {
-				colorIndex := math.Round((dataIn[i]-zmin)/colorsPerSpan) - 1
-				// Ensure colorIndex is within the colorPalette
+			output := make([]byte, len(dataIn)*4)
+			for i, v := range dataIn {
+				colorIndex := math.Round((v-zmin)/colorsPerSpan) - 1
 				colorIndex = math.Min(math.Max(colorIndex, 0), float64(numColors-1))
-				a := 255
-				//log.Println("colorIndex", colorIndex,dataIn[i],zmin,zmax,colorsPerSpan)
-				dataOut.WriteByte(byte(colorPalette[int(colorIndex)].Red))
-				dataOut.WriteByte(byte(colorPalette[int(colorIndex)].Green))
-				dataOut.WriteByte(byte(colorPalette[int(colorIndex)].Blue))
-				dataOut.WriteByte(byte(a))
+				ci := int(colorIndex)
+				offset := i * 4
+				output[offset] = byte(colorPalette[ci].Red)
+				output[offset+1] = byte(colorPalette[ci].Green)
+				output[offset+2] = byte(colorPalette[ci].Blue)
+				output[offset+3] = 255
 			}
+			return output
 		} else {
+			output := make([]byte, len(dataIn)*4)
+			r := byte(colorPalette[0].Red)
+			g := byte(colorPalette[0].Green)
+			b := byte(colorPalette[0].Blue)
 			for i := 0; i < len(dataIn); i++ {
-				a := 255
-				dataOut.WriteByte(byte(colorPalette[0].Red))
-				dataOut.WriteByte(byte(colorPalette[0].Green))
-				dataOut.WriteByte(byte(colorPalette[0].Blue))
-				dataOut.WriteByte(byte(a))
+				offset := i * 4
+				output[offset] = r
+				output[offset+1] = g
+				output[offset+2] = b
+				output[offset+3] = 255
 			}
+			return output
 		}
-		//log.Println("out_data RGBA" , len(dataOut.Bytes()))
-		return dataOut.Bytes()
 	} else {
 		log.Println("Creating Output of Type ", fileFormat)
 		switch string(fileFormat[1]) {
