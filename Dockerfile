@@ -1,12 +1,10 @@
-FROM node:14-alpine AS jsbuilder
-
-RUN apk add --no-cache git
+FROM node:18-alpine AS jsbuilder
 
 WORKDIR /app
 
-COPY ui/webapp/package.json ./
+COPY ui/webapp/package.json ui/webapp/package-lock.json ./
 
-RUN npm install
+RUN npm ci
 
 COPY ui/webapp .
 

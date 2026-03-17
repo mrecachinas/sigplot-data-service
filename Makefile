@@ -9,7 +9,7 @@ GOFLAGS=-a -ldflags '-w -extldflags "-static"' -mod vendor
 all: ui sds-ui
 
 ui:
-	npm --prefix ./ui/webapp install
+	npm --prefix ./ui/webapp ci
 	npm --prefix ./ui/webapp run build
 
 sds:
