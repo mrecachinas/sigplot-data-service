@@ -36,6 +36,6 @@ COPY --from=gobuilder /opt/sds/sigplot_data_service .
 
 EXPOSE 5055
 
-ENTRYPOINT [ "sigplot-data-service" ]
+ENTRYPOINT [ "/opt/sds/sigplot-data-service" ]
 
 CMD "-h"
