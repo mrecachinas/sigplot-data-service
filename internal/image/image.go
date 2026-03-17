@@ -5,8 +5,6 @@ import (
 	"encoding/binary"
 	"log"
 	"math"
-
-	"github.com/spectriclabs/sigplot-data-service/internal/util"
 )
 
 func ApplyCXmode(datain []float64, cxmode string, complexData bool) []float64 {
@@ -79,15 +77,20 @@ func ApplyCXmode(datain []float64, cxmode string, complexData bool) []float64 {
 
 func DownSampleLineInY(datain []float64, outxsize int, transform string) []float64 {
 	numLines := len(datain) / outxsize
-	//log.Println("len(datain),outxsize" ,len(datain),outxsize)
-	processSlice := make([]float64, numLines)
 	outData := make([]float64, outxsize)
-	for x := 0; x < outxsize; x++ {
-		for y := 0; y < numLines; y++ {
-			//log.Println("y thin" ,y,outxsize,x)
-			processSlice[y] = datain[y*outxsize+x]
+
+	// Transpose: convert row-major to column-major for sequential access
+	transposed := make([]float64, len(datain))
+	for r := 0; r < numLines; r++ {
+		for c := 0; c < outxsize; c++ {
+			transposed[c*numLines+r] = datain[r*outxsize+c]
 		}
-		outData[x] = Transform(processSlice[:], transform)
+	}
+
+	// Now each column is contiguous in memory
+	for x := 0; x < outxsize; x++ {
+		start := x * numLines
+		outData[x] = Transform(transposed[start:start+numLines], transform)
 	}
 	return outData
 }
@@ -232,81 +235,59 @@ func CreateOutput(dataIn []float64, fileFormat string, zmin, zmax float64, color
 		log.Println("Creating Output of Type ", fileFormat)
 		switch string(fileFormat[1]) {
 		case "B":
-			var numSlice = make([]int8, len(dataIn))
-			for i := 0; i < len(numSlice); i++ {
-				numSlice[i] = int8(math.Round(dataIn[i]))
+			output := make([]byte, len(dataIn))
+			for i, v := range dataIn {
+				output[i] = byte(int8(math.Round(v)))
 			}
-
-			err := binary.Write(dataOut, binary.LittleEndian, &numSlice)
-
-			util.CheckError(err)
-
+			return output
 		case "I":
-			var numSlice = make([]int16, len(dataIn))
-			for i := 0; i < len(numSlice); i++ {
-				numSlice[i] = int16(math.Round(dataIn[i]))
+			output := make([]byte, len(dataIn)*2)
+			for i, v := range dataIn {
+				binary.LittleEndian.PutUint16(output[i*2:], uint16(int16(math.Round(v))))
 			}
-
-			err := binary.Write(dataOut, binary.LittleEndian, &numSlice)
-
-			util.CheckError(err)
-
+			return output
 		case "L":
-			var numSlice = make([]int32, len(dataIn))
-			for i := 0; i < len(numSlice); i++ {
-				numSlice[i] = int32(math.Round(dataIn[i]))
+			output := make([]byte, len(dataIn)*4)
+			for i, v := range dataIn {
+				binary.LittleEndian.PutUint32(output[i*4:], uint32(int32(math.Round(v))))
 			}
-
-			err := binary.Write(dataOut, binary.LittleEndian, &numSlice)
-
-			util.CheckError(err)
-
+			return output
 		case "F":
-			var numSlice = make([]float32, len(dataIn))
-			for i := 0; i < len(numSlice); i++ {
-				numSlice[i] = float32(dataIn[i])
+			output := make([]byte, len(dataIn)*4)
+			for i, v := range dataIn {
+				binary.LittleEndian.PutUint32(output[i*4:], math.Float32bits(float32(v)))
 			}
-
-			err := binary.Write(dataOut, binary.LittleEndian, &numSlice)
-
-			util.CheckError(err)
-
+			return output
 		case "D":
-			var numSlice = make([]float64, len(dataIn))
-			for i := 0; i < len(numSlice); i++ {
-				numSlice[i] = dataIn[i]
+			output := make([]byte, len(dataIn)*8)
+			for i, v := range dataIn {
+				binary.LittleEndian.PutUint64(output[i*8:], math.Float64bits(v))
 			}
-
-			err := binary.Write(dataOut, binary.LittleEndian, &numSlice)
-
-			util.CheckError(err)
-
+			return output
 		case "P":
 			extraBits := len(dataIn) % 8
-			for extraBit := 0; extraBit < extraBits; extraBits++ { //Pad zeros to make the number of elements divisable by 8 so it can be packed into a byte
+			for extraBit := 0; extraBit < extraBits; extraBit++ {
 				dataIn = append(dataIn, 0)
 			}
 			numBytes := len(dataIn) / 8
-			var numSlice = make([]uint8, numBytes)
-			for i := 0; i < len(numSlice); i++ {
+			output := make([]byte, numBytes)
+			for i := 0; i < numBytes; i++ {
+				var b uint8
 				for j := 0; j < 8; j++ {
 					var bit uint8
-					if dataIn[i*8+j] > 0 { //SP Data can only be 0 or 1, so if values is greater than 0, make it a 1.
+					if dataIn[i*8+j] > 0 {
 						bit = 1
 					} else {
 						bit = 0
 					}
-					numSlice[i] = (numSlice[i] << 1) | bit
+					b = (b << 1) | bit
 				}
-
+				output[i] = b
 			}
-			err := binary.Write(dataOut, binary.LittleEndian, &numSlice)
-			util.CheckError(err)
-
+			return output
 		default:
 			log.Println("Unsupported output type")
 		}
-		//log.Println("out_data" , len(dataOut.Bytes()))
 
 		return dataOut.Bytes()
 	}

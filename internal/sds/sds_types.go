@@ -239,7 +239,7 @@ func (request *RdsRequest) FindZminMax(maxBytesZminZmax int) {
 			log.Println("Computing Zmax/Zmin on whole file, not previously computed")
 			min := make([]float64, request.FileYSize)
 			max := make([]float64, request.FileYSize)
-			done := make(chan bool, 1)
+			done := make(chan bool, request.FileYSize*2)
 			for line := 0; line < request.FileYSize; line++ {
 				zminmaxRequest.Ystart = line
 				zminmaxRequest.Transform = "min"
@@ -258,7 +258,7 @@ func (request *RdsRequest) FindZminMax(maxBytesZminZmax int) {
 			numSubSections := 4
 			min := make([]float64, numSubSections)
 			max := make([]float64, numSubSections)
-			done := make(chan bool, 1)
+			done := make(chan bool, numSubSections*2)
 			spaceBytes := (float64(request.FileXSize) * bytesPerElement) - float64(maxBytesZminZmax)
 			elementsPerSpace := int(spaceBytes/bytesPerElement) / (numSubSections - 1)
 			elementsPerSection := maxBytesZminZmax / numSubSections
@@ -298,7 +298,7 @@ func (request *RdsRequest) FindZminMax(maxBytesZminZmax int) {
 			log.Println("Computing Zmax/Zmin on sampling of file, not previously computed. Number of middle lines:", numMiddlesLines)
 			min := make([]float64, 2+numMiddlesLines)
 			max := make([]float64, 2+numMiddlesLines)
-			done := make(chan bool, 1)
+			done := make(chan bool, (2+numMiddlesLines)*2)
 			numRequested := 0
 			// Process Min and Max of first line
 			zminmaxRequest.Ystart = 0

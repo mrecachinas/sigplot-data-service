@@ -8,7 +8,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
+)
+
+var (
+	memCache        = make(map[string][]byte)
+	memCacheMu      sync.RWMutex
+	memCacheSize    int64
+	memCacheMaxSize int64 = 100 * 1024 * 1024 // 100MB default
 )
 
 type Cache struct {
@@ -27,9 +35,30 @@ func UrlToCacheFileName(url string) string {
 // GetDataFromCache retrieves data from a provided `cacheFileName`
 // within a `subDir` directory
 func (c *Cache) GetDataFromCache(cacheFileName string, subDir string) ([]byte, error) {
-	fullPath := fmt.Sprintf("%s%s%s", c.Location, subDir, cacheFileName)
-	outData, err := ioutil.ReadFile(fullPath)
-	return outData, err
+	// Check in-memory cache first
+	memCacheMu.RLock()
+	if data, ok := memCache[cacheFileName]; ok {
+		memCacheMu.RUnlock()
+		return data, nil
+	}
+	memCacheMu.RUnlock()
+
+	// Fall back to disk
+	fullPath := filepath.Join(c.Location, subDir, cacheFileName)
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Populate memory cache
+	memCacheMu.Lock()
+	if memCacheSize+int64(len(data)) <= memCacheMaxSize {
+		memCache[cacheFileName] = data
+		memCacheSize += int64(len(data))
+	}
+	memCacheMu.Unlock()
+
+	return data, nil
 }
 
 // GetItemFromCache retrieves a file from a `cacheFileName`

@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -222,11 +223,14 @@ func OpenDataSource(cfg *config.Config, sdsCache *cache.Cache, locationName stri
 }
 
 func ProcessRequest(dataRequest RdsRequest) []byte {
-	var processedData []float64
+	processedData := make([]float64, dataRequest.Outxsize*dataRequest.Outysize)
 
 	yLinesPerOutput := float64(dataRequest.Ysize) / float64(dataRequest.Outysize)
 	yLinesPerOutputCeil := int(math.Ceil(yLinesPerOutput))
 	log.Println("ProcessRequest:", dataRequest.FileXSize, dataRequest.Xstart, dataRequest.Ystart, dataRequest.Xsize, dataRequest.Ysize, dataRequest.Outxsize, dataRequest.Outysize)
+
+	sem := make(chan struct{}, runtime.NumCPU())
+
 	// Loop over the output Y Lines
 	for outputLine := 0; outputLine < dataRequest.Outysize; outputLine++ {
 		//log.Println("Processing Output Line ", outputLine)
@@ -252,22 +256,20 @@ func ProcessRequest(dataRequest RdsRequest) []byte {
 		// Number of y lines that will be processed this time through the loop
 		numLines := endLine - startLine
 
-		// Make channels to collect the data from processing all the lines in parallel.
-		//var chans [100]chan []float64
-		chans := make([]chan []float64, numLines)
-		for i := range chans {
-			chans[i] = make(chan []float64)
-		}
 		xThinData := make([]float64, numLines*dataRequest.Outxsize)
 		//log.Println("Going to Process Input Lines", startLine, endLine)
 
-		done := make(chan bool, 1)
-		// Launch the processing of each line concurrently and put the data into a set of channels
+		done := make(chan bool, numLines)
+		// Launch the processing of each line concurrently with bounded concurrency
 		for inputLine := startLine; inputLine < endLine; inputLine++ {
 			var lineRequest RdsRequest
 			lineRequest = dataRequest
 			lineRequest.Ystart = inputLine
-			go ProcessLine(xThinData, inputLine-startLine, done, lineRequest)
+			sem <- struct{}{}
+			go func(lineReq RdsRequest, lineIdx int) {
+				defer func() { <-sem }()
+				ProcessLine(xThinData, lineIdx, done, lineReq)
+			}(lineRequest, inputLine-startLine)
 
 		}
 		//Wait until all the lines have finished before moving on
@@ -275,29 +277,10 @@ func ProcessRequest(dataRequest RdsRequest) []byte {
 			<-done
 		}
 
-		// for i := 0; i < len(xThinData); i++ {
-		// 	if math.IsNaN(xThinData[i]) {
-		// 		log.Println("processedDataNaN", outputLine, i)
-		// 	}
-		// }
 		// Thin in y direction the subsset of lines that have now been processed in x
 		yThinData := image.DownSampleLineInY(xThinData, dataRequest.Outxsize, dataRequest.Transform)
-		//log.Println("Thin Y data is currently ", len(yThinData))
 
-		// for i := 0; i < len(yThinData); i++ {
-		// 	if math.IsNaN(yThinData[i]) {
-		// 		log.Println("processedDataNaN", outputLine, i)
-		// 	}
-		// }
-
-		processedData = append(processedData, yThinData...)
-		//log.Println("processedData is currently ", len(processedData))
-
-		// for i := 0; i < len(processedData); i++ {
-		// 	if math.IsNaN(processedData[i]) {
-		// 		log.Println("processedDataNaN", outputLine, i)
-		// 	}
-		// }
+		copy(processedData[outputLine*dataRequest.Outxsize:], yThinData)
 
 	}
 
@@ -319,7 +302,7 @@ func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
 	}
 
 	// Get the slice data out of the file. For x the data is continuous, for y cuts, we need to grab one element from each row.
-	filedata := make([]byte, 0, int(math.Max(float64(dataRequest.FileXSize), float64(dataRequest.FileYSize))))
+	var filedata []byte
 	var dataToProcess []float64
 	if cutType == "rdsxcut" || cutType == "lds" {
 		firstDataByte := float64(dataRequest.Ystart*dataRequest.FileXSize+dataRequest.Xstart) * bytesPerElement
@@ -346,11 +329,13 @@ func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
 			var empty []byte
 			return empty
 		}
-		for row := dataRequest.Ystart; row < (dataRequest.Ystart + dataRequest.Ysize); row++ {
+		elemSize := int(bytesPerElement)
+		filedata = make([]byte, dataRequest.Ysize*elemSize)
+		for i, row := 0, dataRequest.Ystart; row < (dataRequest.Ystart + dataRequest.Ysize); i, row = i+1, row+1 {
 			dataByte := float64(row*dataRequest.FileXSize+dataRequest.Xstart) * bytesPerElement
 			dataByteInt := int(math.Floor(dataByte))
-			data, _ := getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+dataByteInt, int(bytesPerElement), mu)
-			filedata = append(filedata, data...)
+			data, _ := getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+dataByteInt, elemSize, mu)
+			copy(filedata[i*elemSize:], data)
 		}
 		dataToProcess = bluefile.ConvertFileData(filedata, dataRequest.FileFormat)
 		log.Println("Got data from file for y cut", len(dataToProcess))
