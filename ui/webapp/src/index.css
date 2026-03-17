@@ -4,146 +4,159 @@
   padding: 0;
 }
 
+html, body {
+  height: 100%;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #1a1a2e;
-  color: #e0e0e0;
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-image: url('/sigplot/ui/images/SpectricBackground.jpg');
+  background-size: cover;
+  background-color: #333;
+  color: white;
 }
 
 .app header {
-  background: #16213e;
   padding: 12px 24px;
-  border-bottom: 1px solid #0f3460;
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .app header h1 {
-  font-size: 1.3rem;
-  font-weight: 500;
-  color: #e94560;
+  font-size: 1.4rem;
+  font-weight: 400;
 }
 
 .app main {
-  display: flex;
-  height: calc(100vh - 49px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
+  padding: 10px;
+  height: calc(100vh - 52px);
 }
 
-.file-browser {
-  width: 280px;
-  min-width: 280px;
-  background: #16213e;
-  border-right: 1px solid #0f3460;
-  padding: 16px;
+/* Top-left: location list */
+.location-panel {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  padding: 10px;
   overflow-y: auto;
 }
 
-.file-browser h3 {
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #8899aa;
+.location-panel h4 {
+  font-size: 1rem;
   margin-bottom: 8px;
 }
 
-.file-browser select {
-  width: 100%;
-  padding: 8px;
-  background: #0f3460;
-  color: #e0e0e0;
-  border: 1px solid #1a4a7a;
+/* Bottom-left: file browser */
+.file-browser {
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 4px;
-  font-size: 0.9rem;
-  margin-bottom: 16px;
+  padding: 10px;
+  overflow-y: auto;
 }
 
-.path-bar {
+.file-browser-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-bottom: 8px;
 }
 
-.path-bar h3 {
-  margin-bottom: 0;
+.file-browser-header h4 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+/* Shared list styles matching Ember's Bootstrap list-group */
+.list-group {
+  list-style: none;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.list-group-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background-color: #d3d3d3;
+  color: black;
+  border: 1px solid #c0c0c0;
+  border-bottom: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.list-group-item:last-child {
+  border-bottom: 1px solid #c0c0c0;
+}
+
+.list-group-item:hover {
+  background-color: #b8b8b8;
+}
+
+.list-group-item.active {
+  background-color: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.file-name {
+  margin: 0;
+}
+
+.file-name.directory {
+  font-weight: bold;
+}
+
+.file-name.directory::before {
+  content: '\1F5C0';
+  margin-right: 4px;
 }
 
 .back-btn {
-  background: #0f3460;
-  color: #e0e0e0;
-  border: 1px solid #1a4a7a;
-  border-radius: 4px;
-  padding: 4px 10px;
+  display: inline-block;
+  padding: 0.3em 1.2em;
+  border-radius: 20%;
+  text-decoration: none;
+  font-family: 'Roboto', sans-serif;
+  font-weight: 300;
+  color: #fff;
+  background-color: #808080;
+  border: none;
   cursor: pointer;
-  font-size: 0.8rem;
+  transition: all 0.2s;
 }
 
 .back-btn:hover {
-  background: #1a4a7a;
+  background-color: #666;
 }
 
-.current-path {
-  font-size: 0.8rem;
-  color: #8899aa;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.empty-message {
+  color: #999;
+  padding: 12px;
+  font-style: italic;
 }
 
-.file-list {
-  list-style: none;
-}
-
-.file-item {
-  padding: 6px 8px;
+/* Right side: plots */
+.plot-container {
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
+  padding: 10px;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
 }
 
-.file-item:hover {
-  background: #0f3460;
-}
-
-.file-item.directory {
-  color: #53a8b6;
-}
-
-.file-item.empty {
-  color: #666;
-  cursor: default;
-}
-
-.file-icon {
+.plot-container h4 {
   font-size: 1rem;
-}
-
-.plot-area {
-  flex: 1;
-  padding: 16px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-content: flex-start;
-  overflow-y: auto;
+  margin-bottom: 8px;
 }
 
 .plot-placeholder {
-  color: #666;
-  font-size: 1.1rem;
+  color: #999;
+  font-style: italic;
   margin: auto;
-}
-
-.plot-container {
-  background: #16213e;
-  border: 1px solid #0f3460;
-  border-radius: 4px;
-  padding: 12px;
-}
-
-.plot-container h3 {
-  font-size: 0.85rem;
-  color: #8899aa;
-  margin-bottom: 8px;
+  text-align: center;
 }

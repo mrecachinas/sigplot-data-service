@@ -12,4 +12,8 @@ export default defineConfig({
       '/sds': 'http://localhost:5055',
     },
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+  },
 });

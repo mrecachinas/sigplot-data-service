@@ -10,50 +10,55 @@ export default function FileBrowser({
   onGoBack,
 }) {
   return (
-    <div className="file-browser">
-      <h3>Locations</h3>
-      <select
-        value={selectedLocation}
-        onChange={(e) => onSelectLocation(e.target.value)}
-      >
-        <option value="">-- Select Location --</option>
-        {locations.map((loc) => (
-          <option key={loc} value={loc}>
-            {loc}
-          </option>
-        ))}
-      </select>
+    <>
+      <div className="location-panel">
+        <h4>Choose Location:</h4>
+        <ul className="list-group">
+          {locations.map((loc) => (
+            <button
+              key={loc}
+              className={`list-group-item${loc === selectedLocation ? ' active' : ''}`}
+              onClick={() => onSelectLocation(loc)}
+            >
+              {loc}
+            </button>
+          ))}
+          {locations.length === 0 && (
+            <p className="empty-message">Loading locations...</p>
+          )}
+        </ul>
+      </div>
 
-      {selectedLocation && (
-        <>
-          <div className="path-bar">
-            <h3>Files</h3>
-            {path && (
-              <button className="back-btn" onClick={onGoBack}>
-                ← Back
-              </button>
-            )}
-            {path && <span className="current-path">/{path}</span>}
-          </div>
-          <ul className="file-list">
+      <div className="file-browser">
+        <div className="file-browser-header">
+          <h4>Choose File:</h4>
+          {path && (
+            <button className="back-btn" onClick={onGoBack}>
+              Back
+            </button>
+          )}
+        </div>
+        {selectedLocation ? (
+          <ul className="list-group">
             {files.map((file) => (
-              <li
+              <button
                 key={file.filename}
-                className={`file-item ${file.type}`}
+                className="list-group-item"
                 onClick={() => onSelectFile(file)}
               >
-                <span className="file-icon">
-                  {file.type === 'directory' ? '📁' : '📄'}
-                </span>
-                {file.filename}
-              </li>
+                <p className={`file-name ${file.type}`}>
+                  {file.filename}
+                </p>
+              </button>
             ))}
             {files.length === 0 && (
-              <li className="file-item empty">No files found</li>
+              <p className="empty-message">No files found</p>
             )}
           </ul>
-        </>
-      )}
-    </div>
+        ) : (
+          <p className="empty-message">Select a location first</p>
+        )}
+      </div>
+    </>
   );
 }
