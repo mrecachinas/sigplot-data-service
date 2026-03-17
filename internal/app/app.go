@@ -108,11 +108,10 @@ func SetupServer(api *api.API) *echo.Echo {
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
-	e.GET("/sigplot/ui/*", echo.WrapHandler(webappFS))
+	e.GET("/sigplot/ui/*", echo.WrapHandler(http.StripPrefix("/sigplot/ui/", webappFS)))
 	e.GET("/*", func(c echo.Context) error {
 		return c.HTMLBlob(http.StatusOK, indexData)
 	})
-	// e.GET("/ui/", echo.WrapHandler(http.StripPrefix("/ui/", webappFS)))
 
 	// Add Prometheus as middleware for metrics gathering
 	p := prometheus.NewPrometheus("sigplot_data_service", nil)
