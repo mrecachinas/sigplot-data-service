@@ -39,8 +39,7 @@ func (a *API) GetRDSTile(c echo.Context) error {
 	if err := c.Bind(&tileRequest); err != nil {
 		return err
 	}
-
-	// Extract URL Parameters
+	tileRequest.ApplyBindDefaults()
 	allowedTileSizes := [5]int{100, 200, 300, 400, 500}
 	if !sds.IntInSlice(tileRequest.TileXSize, allowedTileSizes[:]) {
 		return c.String(
@@ -76,7 +75,7 @@ func (a *API) GetRDSTile(c echo.Context) error {
 	tileRequest.ComputeTileSizes()
 
 	if tileRequest.Xsize < 1 || tileRequest.Ysize < 1 {
-		return fmt.Errorf("bad Xsize or ysize. xsize: %d, ysize: %d", tileRequest.Xsize, tileRequest.Ysize)
+		return c.String(http.StatusBadRequest, fmt.Sprintf("bad Xsize or ysize. xsize: %d, ysize: %d", tileRequest.Xsize, tileRequest.Ysize))
 	}
 
 	c.Logger().Infof(
@@ -113,7 +112,7 @@ func (a *API) GetRDSTile(c echo.Context) error {
 		locationName := c.Param("location")
 		tileRequest.Reader, openErr = sds.OpenDataSource(a.Cfg, a.Cache, locationName, tileRequest.FileName)
 		if openErr != nil {
-			return openErr
+			return c.String(http.StatusBadRequest, openErr.Error())
 		}
 
 		if strings.Contains(tileRequest.FileName, ".tmp") || strings.Contains(tileRequest.FileName, ".prm") {

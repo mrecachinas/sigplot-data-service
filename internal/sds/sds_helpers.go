@@ -166,7 +166,7 @@ func OpenDataSource(cfg *config.Config, sdsCache *cache.Cache, locationName stri
 				currentLocation.Location,
 				&minio.Options{
 					Creds:  credentials.NewStaticV4(currentLocation.MinioAccessKey, currentLocation.MinioSecretKey, ""),
-					Secure: false,
+					Secure: currentLocation.MinioUseSSL,
 				},
 			)
 			elapsed := time.Since(start)

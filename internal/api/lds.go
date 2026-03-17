@@ -23,9 +23,10 @@ func (a *API) GetLDS(c echo.Context) error {
 	//Get URL Parameters
 	//url - /sds/lds/x1/x2/outxsize/outzsize
 	var rdsRequest sds.RdsRequest
-	if err := c.Bind(rdsRequest); err != nil {
-		return err
+	if err := c.Bind(&rdsRequest); err != nil {
+		return c.String(http.StatusBadRequest, err.Error())
 	}
+	rdsRequest.ApplyBindDefaults()
 
 	if rdsRequest.X1 < 0 || rdsRequest.X2 < 0 {
 		err := fmt.Errorf("x1 %d and x2 %d must be >= 0", rdsRequest.X1, rdsRequest.X2)
@@ -79,7 +80,7 @@ func (a *API) GetLDS(c echo.Context) error {
 		c.Logger().Info("RDS request not in cache, computing result")
 		rdsRequest.Reader, err = sds.OpenDataSource(a.Cfg, a.Cache, locationName, filename)
 		if err != nil {
-			return err
+			return c.String(http.StatusBadRequest, err.Error())
 		}
 
 		if strings.Contains(rdsRequest.FileName, ".tmp") || strings.Contains(rdsRequest.FileName, ".prm") {
@@ -96,28 +97,22 @@ func (a *API) GetLDS(c echo.Context) error {
 		}
 		// Check Request against File Size
 		if rdsRequest.Xsize > rdsRequest.FileXSize {
-			err := fmt.Errorf(
+			return c.String(http.StatusBadRequest, fmt.Sprintf(
 				"requested x size %d greater than file x size %d",
-				rdsRequest.Xsize,
-				rdsRequest.FileXSize,
-			)
-			return err
+				rdsRequest.Xsize, rdsRequest.FileXSize,
+			))
 		}
 		if rdsRequest.X1 > rdsRequest.FileXSize {
-			err := fmt.Errorf(
+			return c.String(http.StatusBadRequest, fmt.Sprintf(
 				"requested x1 %d greater than file x size %d",
-				rdsRequest.X1,
-				rdsRequest.FileXSize,
-			)
-			return err
+				rdsRequest.X1, rdsRequest.FileXSize,
+			))
 		}
 		if rdsRequest.X2 > rdsRequest.FileXSize {
-			err := fmt.Errorf(
+			return c.String(http.StatusBadRequest, fmt.Sprintf(
 				"requested x2 %d greater than file x size %d",
-				rdsRequest.X2,
-				rdsRequest.FileXSize,
-			)
-			return err
+				rdsRequest.X2, rdsRequest.FileXSize,
+			))
 		}
 
 		//If Zmin and Zmax were not explitily given then compute

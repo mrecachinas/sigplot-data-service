@@ -46,8 +46,10 @@ func (c *Cache) PutItemInCache(cacheFileName string, subDir string, data []byte)
 	fullPath := fmt.Sprintf("%s%s%s", c.Location, subDir, cacheFileName)
 	fullPathDirectory := filepath.Dir(fullPath)
 	if _, err := os.Stat(fullPathDirectory); os.IsNotExist(err) {
-		mkdirErr := os.Mkdir(fullPathDirectory, 0755)
-		return mkdirErr
+		mkdirErr := os.MkdirAll(fullPathDirectory, 0755)
+		if mkdirErr != nil {
+			return mkdirErr
+		}
 	}
 	file, err := os.Create(fullPath)
 	if err != nil {

@@ -21,7 +21,8 @@
       "location": "192.168.1.229:9000",
       "minio_access_key": "minio",
       "minio_bucket": "sdsdata",
-      "minio_secret_key": "miniostorage"
+      "minio_secret_key": "miniostorage",
+      "minio_use_ssl": false
     }
   ]
 }

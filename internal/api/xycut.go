@@ -26,7 +26,22 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 
 	var rdsRequest sds.RdsRequest
 	if err := c.Bind(&rdsRequest); err != nil {
-		return err
+		return c.String(http.StatusBadRequest, err.Error())
+	}
+	rdsRequest.ApplyBindDefaults()
+
+	// Validate input parameters
+	if rdsRequest.X1 < 0 || rdsRequest.X2 < 0 || rdsRequest.Y1 < 0 || rdsRequest.Y2 < 0 {
+		return c.String(http.StatusBadRequest, fmt.Sprintf(
+			"coordinates must be >= 0: x1=%d, y1=%d, x2=%d, y2=%d",
+			rdsRequest.X1, rdsRequest.Y1, rdsRequest.X2, rdsRequest.Y2,
+		))
+	}
+	if rdsRequest.Outxsize < 1 || rdsRequest.Outysize < 1 {
+		return c.String(http.StatusBadRequest, fmt.Sprintf(
+			"output sizes must be >= 1: outxsize=%d, outysize=%d",
+			rdsRequest.Outxsize, rdsRequest.Outysize,
+		))
 	}
 
 	rdsRequest.ComputeRequestSizes()
@@ -80,7 +95,7 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 		c.Logger().Info("RDS request not in cache, computing result")
 		rdsRequest.Reader, err = sds.OpenDataSource(a.Cfg, a.Cache, locationName, filename)
 		if err != nil {
-			return err
+			return c.String(http.StatusBadRequest, err.Error())
 		}
 
 		if strings.Contains(rdsRequest.FileName, ".tmp") || strings.Contains(rdsRequest.FileName, ".prm") {
@@ -101,44 +116,34 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 
 		// Check Request against File Size
 		if rdsRequest.Xsize > rdsRequest.FileXSize {
-			err := fmt.Errorf(
+			return c.String(http.StatusBadRequest, fmt.Sprintf(
 				"requested x size %d greater than file x size %d",
-				rdsRequest.Xsize,
-				rdsRequest.FileXSize,
-			)
-			return err
+				rdsRequest.Xsize, rdsRequest.FileXSize,
+			))
 		}
 		if rdsRequest.X1 > rdsRequest.FileXSize {
-			err := fmt.Errorf(
+			return c.String(http.StatusBadRequest, fmt.Sprintf(
 				"requested x1 %d greater than file x size %d",
-				rdsRequest.X1,
-				rdsRequest.FileXSize,
-			)
-			return err
+				rdsRequest.X1, rdsRequest.FileXSize,
+			))
 		}
 		if rdsRequest.X2 > rdsRequest.FileXSize {
-			err := fmt.Errorf(
+			return c.String(http.StatusBadRequest, fmt.Sprintf(
 				"requested x2 %d greater than file x size %d",
-				rdsRequest.X2,
-				rdsRequest.FileXSize,
-			)
-			return err
+				rdsRequest.X2, rdsRequest.FileXSize,
+			))
 		}
 		if rdsRequest.Y1 > rdsRequest.FileYSize {
-			err := fmt.Errorf(
+			return c.String(http.StatusBadRequest, fmt.Sprintf(
 				"requested y1 %d greater than file y size %d",
-				rdsRequest.Y1,
-				rdsRequest.FileYSize,
-			)
-			return err
+				rdsRequest.Y1, rdsRequest.FileYSize,
+			))
 		}
 		if rdsRequest.Y2 > rdsRequest.FileYSize {
-			err := fmt.Errorf(
+			return c.String(http.StatusBadRequest, fmt.Sprintf(
 				"requested y2 %d greater than file y size %d",
-				rdsRequest.Y2,
-				rdsRequest.FileYSize,
-			)
-			return err
+				rdsRequest.Y2, rdsRequest.FileYSize,
+			))
 		}
 
 		//If Zmin and Zmax were not explitily given then compute
@@ -149,6 +154,10 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 		if cutType == "rds" {
 			data = sds.ProcessRequest(rdsRequest)
 		} else {
+			// For xcut/ycut, the outysize route param serves as outzsize
+			if rdsRequest.Outzsize == 0 {
+				rdsRequest.Outzsize = rdsRequest.Outysize
+			}
 			data = sds.ProcessLineRequest(rdsRequest, cutType)
 		}
 		if a.Cfg.UseCache {

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
-	"github.com/spectriclabs/sigplot-data-service/internal/api"
 	"github.com/spectriclabs/sigplot-data-service/internal/config"
 	"github.com/stretchr/testify/assert"
 )
@@ -19,24 +18,23 @@ func TestFS(t *testing.T) {
 	var locationDetails []config.Location
 	err := json.Unmarshal([]byte(sdsConfigString), &locationDetails)
 	if err != nil {
-		t.Errorf("Error unmarshalling JSON: %v", err)
+		t.Fatalf("Error unmarshalling JSON: %v", err)
 	}
 
 	sdsConfig := config.Config{
 		LocationDetails: locationDetails,
 	}
 
-	url := "/sds/fs"
 	e := echo.New()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, "/sds/fs", nil)
 	if err != nil {
-		t.Errorf("The request could not be created because of: %v", err)
+		t.Fatalf("The request could not be created because of: %v", err)
 	}
 
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	c.SetPath("/sds/fs")
-	a := api.NewSDSAPI(&sdsConfig)
+	a := NewSDSAPI(&sdsConfig)
 
 	if assert.NoError(t, a.GetFileLocations(c)) {
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -45,88 +43,77 @@ func TestFS(t *testing.T) {
 }
 
 func TestFSDir(t *testing.T) {
-	var locationDetails []config.Location
-	err := json.Unmarshal([]byte(sdsConfigString), &locationDetails)
-	if err != nil {
-		t.Errorf("Error unmarshalling JSON: %v", err)
-	}
-
 	sdsConfig := config.Config{
-		LocationDetails: locationDetails,
+		LocationDetails: []config.Location{
+			{LocationName: "TestDir", LocationType: "localFile", Path: "."},
+		},
 	}
 
-	url := "/sds/fs"
 	e := echo.New()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, "/sds/fs/TestDir/", nil)
 	if err != nil {
-		t.Errorf("The request could not be created because of: %v", err)
+		t.Fatalf("The request could not be created: %v", err)
 	}
 
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetPath("/sds/fs")
-	a := api.NewSDSAPI(&sdsConfig)
+	c.SetPath("/sds/fs/:location/*")
+	c.SetParamNames("location", "*")
+	c.SetParamValues("TestDir", "")
+	a := NewSDSAPI(&sdsConfig)
 
-	if assert.NoError(t, a.GetFileLocations(c)) {
+	if assert.NoError(t, a.GetFileOrDirectory(c)) {
 		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, sdsConfigString, strings.TrimSpace(rec.Body.String()))
+		assert.Contains(t, rec.Body.String(), "filename")
 	}
 }
 
 func TestFSFile(t *testing.T) {
-	var locationDetails []config.Location
-	err := json.Unmarshal([]byte(sdsConfigString), &locationDetails)
-	if err != nil {
-		t.Errorf("Error unmarshalling JSON: %v", err)
-	}
-
 	sdsConfig := config.Config{
-		LocationDetails: locationDetails,
+		LocationDetails: []config.Location{
+			{LocationName: "TestDir", LocationType: "localFile", Path: "."},
+		},
 	}
 
-	url := "/sds/fs"
 	e := echo.New()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, "/sds/fs/TestDir/fs_test.go", nil)
 	if err != nil {
-		t.Errorf("The request could not be created because of: %v", err)
+		t.Fatalf("The request could not be created: %v", err)
 	}
 
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetPath("/sds/fs")
-	a := api.NewSDSAPI(&sdsConfig)
+	c.SetPath("/sds/fs/:location/*")
+	c.SetParamNames("location", "*")
+	c.SetParamValues("TestDir", "fs_test.go")
+	a := NewSDSAPI(&sdsConfig)
 
-	if assert.NoError(t, a.GetFileLocations(c)) {
+	if assert.NoError(t, a.GetFileOrDirectory(c)) {
 		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, sdsConfigString, strings.TrimSpace(rec.Body.String()))
+		assert.True(t, rec.Body.Len() > 0, "File contents should not be empty")
 	}
 }
 
 func TestFSMinio(t *testing.T) {
-	var locationDetails []config.Location
-	err := json.Unmarshal([]byte(sdsConfigString), &locationDetails)
-	if err != nil {
-		t.Errorf("Error unmarshalling JSON: %v", err)
-	}
-
 	sdsConfig := config.Config{
-		LocationDetails: locationDetails,
+		LocationDetails: []config.Location{
+			{LocationName: "minio", LocationType: "minio", MinioBucket: "sdsdata"},
+		},
 	}
 
-	url := "/sds/fs"
 	e := echo.New()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, "/sds/fs/minio/", nil)
 	if err != nil {
-		t.Errorf("The request could not be created because of: %v", err)
+		t.Fatalf("The request could not be created: %v", err)
 	}
 
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetPath("/sds/fs")
-	a := api.NewSDSAPI(&sdsConfig)
+	c.SetPath("/sds/fs/:location/*")
+	c.SetParamNames("location", "*")
+	c.SetParamValues("minio", "")
+	a := NewSDSAPI(&sdsConfig)
 
-	if assert.NoError(t, a.GetFileLocations(c)) {
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, sdsConfigString, strings.TrimSpace(rec.Body.String()))
-	}
+	a.GetFileOrDirectory(c)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }

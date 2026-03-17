@@ -37,19 +37,19 @@ type RdsRequest struct {
 	DecX           int
 	DecY           int
 	Zset           bool
-	Subsize        int `query:"subsize,omitempty"`
+	Subsize        int `query:"subsize"`
 	SubsizeSet     bool
 	Transform      string `query:"transform"`
-	ColorMap       string `query:"colormap,omitempty"`
+	ColorMap       string `query:"colormap"`
 	Reader         io.ReadSeeker
-	Cxmode         string `query:"cxmode,omitempty"`
+	Cxmode         string `query:"cxmode"`
 	CxmodeSet      bool
-	OutputFmt      string  `query:"outfmt,omitempty"`
+	OutputFmt      string  `query:"outfmt"`
 	Outxsize       int     `json:"outxsize" param:"outxsize"`
 	Outysize       int     `json:"outysize" param:"outysize"`
 	Outzsize       int     `json:"outzsize" param:"outzsize"`
-	Zmin           float64 `json:"zmin" query:"zmin,omitempty"`
-	Zmax           float64 `json:"zmax" query:"zmax,omitempty"`
+	Zmin           float64 `json:"zmin" query:"zmin"`
+	Zmax           float64 `json:"zmax" query:"zmax"`
 	Filexstart     float64 `json:"filexstart"`
 	Filexdelta     float64 `json:"filexdelta"`
 	Fileystart     float64 `json:"fileystart"`
@@ -68,6 +68,25 @@ func (request *RdsRequest) ComputeYSize() {
 	request.FileYSize = int(request.FileDataSize/bluefile.BytesPerAtomMap[string(request.FileFormat[1])]) / (request.FileXSize)
 	if string(request.FileFormat[0]) == "C" {
 		request.FileYSize = request.FileYSize / 2
+	}
+}
+
+// ApplyBindDefaults sets boolean flags and defaults after Echo Bind
+func (request *RdsRequest) ApplyBindDefaults() {
+	request.SubsizeSet = request.Subsize > 0
+	if !request.SubsizeSet {
+		request.Subsize = 1
+	}
+	request.CxmodeSet = request.Cxmode != ""
+	if !request.CxmodeSet {
+		request.Cxmode = "Re"
+	}
+	request.Zset = request.Zmin != 0 || request.Zmax != 0
+	if request.Transform == "" {
+		request.Transform = "first"
+	}
+	if request.ColorMap == "" {
+		request.ColorMap = "RampColormap"
 	}
 }
 
@@ -152,7 +171,7 @@ func (request *RdsRequest) GetQueryParams(r *http.Request) {
 	}
 }
 
-var ZminzmaxFileMap map[string]Zminzmax
+var ZminzmaxFileMap = map[string]Zminzmax{}
 
 var DecimationLookup = map[int]int{
 	1:  1,
