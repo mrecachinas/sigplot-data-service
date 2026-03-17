@@ -177,21 +177,21 @@ func (a *API) GetFileOrDirectory(c echo.Context) error {
 
 		ctx := context.Background()
 
-		objectFd, err := minioClient.GetObject(ctx, currentLocation.MinioBucket, filePath, minio.GetObjectOptions{})
-		if err != nil {
-			log.Println("Error getting object from MinIO", err)
-			return c.String(http.StatusInternalServerError, err.Error())
-		}
-
-		_, statErr := objectFd.Stat()
-		if statErr == nil && !strings.HasSuffix(filePath, "/") {
-			var contentType string
-			if strings.Contains(filePath, ".tmp") || strings.Contains(filePath, ".prm") {
-				contentType = "application/bluefile"
-			} else {
-				contentType = "application/binary"
+		// If filePath is non-empty, try to get it as a file first
+		if filePath != "" && !strings.HasSuffix(filePath, "/") {
+			objectFd, err := minioClient.GetObject(ctx, currentLocation.MinioBucket, filePath, minio.GetObjectOptions{})
+			if err == nil {
+				_, statErr := objectFd.Stat()
+				if statErr == nil {
+					var contentType string
+					if strings.Contains(filePath, ".tmp") || strings.Contains(filePath, ".prm") {
+						contentType = "application/bluefile"
+					} else {
+						contentType = "application/binary"
+					}
+					return c.Stream(http.StatusOK, contentType, objectFd)
+				}
 			}
-			return c.Stream(http.StatusOK, contentType, objectFd)
 		}
 
 		// List directory contents
