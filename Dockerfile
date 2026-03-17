@@ -25,7 +25,7 @@ COPY vendor .
 COPY --from=jsbuilder /app/dist ./ui/webapp/dist
 
 # Put everything together
-RUN make sds
+RUN make sds-ui
 
 FROM busybox:1.33.1
 
@@ -36,6 +36,6 @@ COPY --from=gobuilder /opt/sds/sigplot_data_service .
 
 EXPOSE 5055
 
-ENTRYPOINT [ "/opt/sds/sigplot-data-service" ]
+ENTRYPOINT [ "/opt/sds/sigplot_data_service" ]
 
 CMD "-h"

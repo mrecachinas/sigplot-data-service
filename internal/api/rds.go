@@ -33,7 +33,7 @@ func (a *API) GetRDSTile(c echo.Context) error {
 
 	tileRequest := sds.RdsRequest{
 		TileRequest: true,
-		OutputFmt: "RGBA",
+		OutputFmt:   "RGBA",
 	}
 
 	if err := c.Bind(&tileRequest); err != nil {

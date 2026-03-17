@@ -7,34 +7,34 @@ import (
 
 func TestComputeRequestSizes(t *testing.T) {
 	tests := []struct {
-		name                             string
-		x1, x2, y1, y2                   int
-		wantXstart, wantYstart           int
-		wantXsize, wantYsize             int
+		name                   string
+		x1, x2, y1, y2         int
+		wantXstart, wantYstart int
+		wantXsize, wantYsize   int
 	}{
 		{
-			name:       "normal order",
-			x1:         10, x2: 50, y1: 5, y2: 25,
+			name: "normal order",
+			x1:   10, x2: 50, y1: 5, y2: 25,
 			wantXstart: 10, wantYstart: 5,
-			wantXsize:  40, wantYsize: 20,
+			wantXsize: 40, wantYsize: 20,
 		},
 		{
-			name:       "reversed order",
-			x1:         50, x2: 10, y1: 25, y2: 5,
+			name: "reversed order",
+			x1:   50, x2: 10, y1: 25, y2: 5,
 			wantXstart: 10, wantYstart: 5,
-			wantXsize:  40, wantYsize: 20,
+			wantXsize: 40, wantYsize: 20,
 		},
 		{
-			name:       "zero range",
-			x1:         0, x2: 0, y1: 0, y2: 0,
+			name: "zero range",
+			x1:   0, x2: 0, y1: 0, y2: 0,
 			wantXstart: 0, wantYstart: 0,
-			wantXsize:  0, wantYsize: 0,
+			wantXsize: 0, wantYsize: 0,
 		},
 		{
-			name:       "single pixel",
-			x1:         5, x2: 6, y1: 3, y2: 4,
+			name: "single pixel",
+			x1:   5, x2: 6, y1: 3, y2: 4,
 			wantXstart: 5, wantYstart: 3,
-			wantXsize:  1, wantYsize: 1,
+			wantXsize: 1, wantYsize: 1,
 		},
 	}
 
@@ -123,31 +123,31 @@ func TestComputeTileSizes(t *testing.T) {
 		wantOutx, wantOuty     int
 	}{
 		{
-			name:       "tile 0,0 dec 1",
-			tileX:      0, tileY: 0,
-			tileXSize:  256, tileYSize: 256,
-			decXMode:   1, decYMode: 1,
+			name:  "tile 0,0 dec 1",
+			tileX: 0, tileY: 0,
+			tileXSize: 256, tileYSize: 256,
+			decXMode: 1, decYMode: 1,
 			wantXstart: 0, wantYstart: 0,
-			wantXsize:  256, wantYsize: 256,
-			wantOutx:   256, wantOuty: 256,
+			wantXsize: 256, wantYsize: 256,
+			wantOutx: 256, wantOuty: 256,
 		},
 		{
-			name:       "tile 1,2 dec 1",
-			tileX:      1, tileY: 2,
-			tileXSize:  128, tileYSize: 128,
-			decXMode:   1, decYMode: 1,
+			name:  "tile 1,2 dec 1",
+			tileX: 1, tileY: 2,
+			tileXSize: 128, tileYSize: 128,
+			decXMode: 1, decYMode: 1,
 			wantXstart: 128, wantYstart: 256,
-			wantXsize:  128, wantYsize: 128,
-			wantOutx:   128, wantOuty: 128,
+			wantXsize: 128, wantYsize: 128,
+			wantOutx: 128, wantOuty: 128,
 		},
 		{
-			name:       "tile 0,0 dec 3 (4x)",
-			tileX:      0, tileY: 0,
-			tileXSize:  100, tileYSize: 100,
-			decXMode:   3, decYMode: 3,
+			name:  "tile 0,0 dec 3 (4x)",
+			tileX: 0, tileY: 0,
+			tileXSize: 100, tileYSize: 100,
+			decXMode: 3, decYMode: 3,
 			wantXstart: 0, wantYstart: 0,
-			wantXsize:  400, wantYsize: 400,
-			wantOutx:   100, wantOuty: 100,
+			wantXsize: 400, wantYsize: 400,
+			wantOutx: 100, wantOuty: 100,
 		},
 	}
 
