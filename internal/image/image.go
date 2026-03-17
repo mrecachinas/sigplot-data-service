@@ -3,8 +3,6 @@ package image
 import (
 	"bytes"
 	"encoding/binary"
-	"gonum.org/v1/gonum/floats"
-	"gonum.org/v1/gonum/stat"
 	"log"
 	"math"
 
@@ -45,8 +43,8 @@ func ApplyCXmode(datain []float64, cxmode string, complexData bool) []float64 {
 		switch cxmode {
 		case "Ma":
 			outData := make([]float64, len(datain))
-			for i := 0; i < len(datain); i++ {
-				outData[i] = math.Sqrt(datain[i] * datain[i])
+			for i := range datain {
+				outData[i] = math.Abs(datain[i])
 			}
 			return outData
 		case "Ph":
@@ -63,19 +61,15 @@ func ApplyCXmode(datain []float64, cxmode string, complexData bool) []float64 {
 		case "IR":
 			return datain
 		case "Lo":
-			outData := make([]float64, len(datain))
-			for i := 0; i < len(datain); i++ {
-				mag2 := math.Max(datain[i], loThresh)
-				outData[i] = 10 * math.Log10(mag2)
+			for i := range datain {
+				datain[i] = 10 * math.Log10(math.Max(datain[i], loThresh))
 			}
-			return outData
+			return datain
 		case "L2":
-			outData := make([]float64, len(datain))
-			for i := 0; i < len(datain); i++ {
-				mag2 := math.Max(datain[i], loThresh)
-				outData[i] = 20 * math.Log10(mag2)
+			for i := range datain {
+				datain[i] = 20 * math.Log10(math.Max(datain[i], loThresh))
 			}
-			return outData
+			return datain
 
 		}
 		return datain //Defaults to "Real" or passthrough
@@ -130,21 +124,35 @@ func DownSampleLineInX(datain []float64, outxsize int, transform string, outData
 func Transform(dataIn []float64, transform string) float64 {
 	switch transform {
 	case "mean":
-		num := stat.Mean(dataIn[:], nil)
+		var sum float64
+		for _, v := range dataIn {
+			sum += v
+		}
+		num := sum / float64(len(dataIn))
 		if math.IsNaN(num) {
 			log.Println("DoTransform produced NaN")
 			num = 0
 		}
 		return num
 	case "max":
-		num := floats.Max(dataIn[:])
+		num := dataIn[0]
+		for _, v := range dataIn[1:] {
+			if v > num {
+				num = v
+			}
+		}
 		if math.IsNaN(num) {
 			log.Println("DoTransform produced NaN")
 			num = 0
 		}
 		return num
 	case "min":
-		num := floats.Min(dataIn[:])
+		num := dataIn[0]
+		for _, v := range dataIn[1:] {
+			if v < num {
+				num = v
+			}
+		}
 		if math.IsNaN(num) {
 			log.Println("DoTransform produced NaN")
 			num = 0
