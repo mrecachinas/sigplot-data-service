@@ -12,7 +12,6 @@ function SigPlotPanel({ href, layerOptions, options, plotRef, title }) {
       expand: true,
       autol: 100,
       autohide_panbars: true,
-      cmode: 6,
       ...options,
     });
     plotRef.current = plot;
