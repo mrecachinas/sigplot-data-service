@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Plot } from 'sigplot';
 
-function SigPlotPanel({ href, options, plotRef, title }) {
+function SigPlotPanel({ href, layerOptions, options, plotRef, title }) {
   const containerRef = useRef(null);
 
   // Create plot once on mount
@@ -28,7 +28,7 @@ function SigPlotPanel({ href, options, plotRef, title }) {
     if (!plot) return;
     plot.deoverlay();
     if (href) {
-      plot.overlay_href(href);
+      plot.overlay_href(href, null, layerOptions);
     }
   }, [href]);
 
@@ -54,7 +54,8 @@ export default function SigPlotViewer({ rawHref, sdsHref }) {
       <SigPlotPanel
         href={sdsHref}
         plotRef={sdsPlotRef}
-        title="SDS View"
+        layerOptions={{ layerType: "SDS" }}
+        title="SDS Tiled View"
       />
     </>
   );
