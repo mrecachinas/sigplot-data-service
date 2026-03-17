@@ -90,10 +90,18 @@ Now you can visit http://localhost:4200/ui/demo.
 
 ## Docker
 
-The Docker version currently *MUST* be run behind an NGINX proxy rooted at /sigplot/
-
 ```
-make docker
+# Build and run with MinIO
+docker compose up
 
-docker run -it --rm -p 5055:5055 sds:0.1
+# Or build the image alone
+docker build -t sds:0.7 .
+docker run -it --rm -p 5055:5055 sds:0.7
 ```
+
+`docker compose up` starts:
+- **SDS** on port 5055
+- **MinIO** on port 9000 (API) and 9001 (console)
+- Automatic bucket creation (`sdsdata`)
+
+Upload files to MinIO via the console at http://localhost:9001 (user: `minio`, password: `miniostorage`), then access them through SDS at `http://localhost:5055/sds/fs/minio/`.

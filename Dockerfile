@@ -1,41 +1,42 @@
-FROM node:16-alpine3.13 as jsbuilder
+FROM node:14-alpine AS jsbuilder
+
+RUN apk add --no-cache git
 
 WORKDIR /app
 
-COPY ui/webapp/package.json ./package.json
+COPY ui/webapp/package.json ./
 
-# We want to cache the node_modules directory
-RUN npm i
+RUN npm install
 
 COPY ui/webapp .
 
 RUN npm run build
 
-FROM golang:1.16-alpine3.13 as gobuilder
+FROM golang:1.26-alpine AS gobuilder
+
+RUN apk add --no-cache make
 
 WORKDIR /opt/sds/app
 
-# Copy only the Go source files over
-COPY cmd .
-COPY internal .
-COPY ui/sds_ui.go ./ui/
-COPY vendor .
+COPY go.mod go.sum Makefile ./
+COPY cmd/ cmd/
+COPY internal/ internal/
+COPY ui/sds_ui.go ui/sds_ui_stub.go ui/
+COPY vendor/ vendor/
 
 # Copy the built JS app from the previous stage
 COPY --from=jsbuilder /app/dist ./ui/webapp/dist
 
-# Put everything together
-RUN make sds-ui
+RUN CGO_ENABLED=0 go build -a -ldflags '-w -extldflags "-static"' -tags ui -mod vendor cmd/sds/sigplot_data_service.go
 
-FROM busybox:1.33.1
+FROM busybox:1.36
 
 WORKDIR /opt/sds
 
-# Copy over the built static binary
-COPY --from=gobuilder /opt/sds/sigplot_data_service .
+COPY --from=gobuilder /opt/sds/app/sigplot_data_service .
 
 EXPOSE 5055
 
-ENTRYPOINT [ "/opt/sds/sigplot_data_service" ]
+ENTRYPOINT ["/opt/sds/sigplot_data_service"]
 
-CMD "-h"
+CMD ["-h"]
