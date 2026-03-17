@@ -105,3 +105,5 @@ docker run -it --rm -p 5055:5055 sds:0.7
 - Automatic bucket creation (`sdsdata`)
 
 Upload files to MinIO via the console at http://localhost:9001 (user: `minio`, password: `miniostorage`), then access them through SDS at `http://localhost:5055/sds/fs/minio/`.
+
+**Note:** SDS can also be deployed behind an NGINX reverse proxy (e.g., rooted at `/sigplot/`). This is optional but may be useful for TLS termination, load balancing, or integrating with existing infrastructure.
