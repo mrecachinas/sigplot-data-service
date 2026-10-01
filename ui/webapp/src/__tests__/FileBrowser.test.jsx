@@ -1,103 +1,188 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, screen, within } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
 import FileBrowser from '../components/FileBrowser';
 
+const defaultProps = {
+  locations: ['TestDir', 'minio'],
+  locationsStatus: 'success',
+  selectedLocation: '',
+  onSelectLocation: vi.fn(),
+  onRetryLocations: vi.fn(),
+  files: [],
+  filesStatus: 'success',
+  onSelectFile: vi.fn(),
+  selectedFile: null,
+  path: '',
+  onGoBack: vi.fn(),
+  onNavigate: vi.fn(),
+};
+
+const files = [
+  { filename: 'b.tmp', type: 'file' },
+  { filename: 'zdir', type: 'directory' },
+  { filename: 'a10.tmp', type: 'file' },
+  { filename: 'a2.tmp', type: 'file' },
+];
+
+function renderAt(props = {}) {
+  return render(
+    <FileBrowser {...defaultProps} selectedLocation="TestDir" files={files} {...props} />
+  );
+}
+
+const rowNames = () =>
+  within(screen.getByRole('list', { name: 'Files' }))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+
 describe('FileBrowser', () => {
-  const defaultProps = {
-    locations: ['TestDir', 'minio'],
-    locationsStatus: 'success',
-    selectedLocation: '',
-    onSelectLocation: vi.fn(),
-    onRetryLocations: vi.fn(),
-    files: [],
-    filesStatus: 'success',
-    onSelectFile: vi.fn(),
-    path: '',
-    onGoBack: vi.fn(),
-  };
-
-  it('renders location list', () => {
-    const { getByText } = render(<FileBrowser {...defaultProps} />);
-    expect(getByText('TestDir')).toBeTruthy();
-    expect(getByText('minio')).toBeTruthy();
-  });
-
-  it('calls onSelectLocation when location clicked', () => {
+  it('offers locations in a labelled dropdown', () => {
     const onSelect = vi.fn();
-    const { getByText } = render(
-      <FileBrowser {...defaultProps} onSelectLocation={onSelect} />
-    );
-    fireEvent.click(getByText('TestDir'));
-    expect(onSelect).toHaveBeenCalledWith('TestDir');
+    render(<FileBrowser {...defaultProps} onSelectLocation={onSelect} />);
+
+    const select = screen.getByRole('combobox', { name: 'Location' });
+    expect(within(select).getByRole('option', { name: 'TestDir' })).toBeTruthy();
+    expect(within(select).getByRole('option', { name: 'minio' })).toBeTruthy();
+
+    fireEvent.change(select, { target: { value: 'minio' } });
+    expect(onSelect).toHaveBeenCalledWith('minio');
   });
 
-  it('shows file list when location selected', () => {
-    const files = [
-      { filename: 'data.tmp', type: 'file' },
-      { filename: 'subdir', type: 'directory' },
-    ];
-    const { getByText } = render(
-      <FileBrowser {...defaultProps} selectedLocation="TestDir" files={files} />
-    );
-    expect(getByText('data.tmp')).toBeTruthy();
-    expect(getByText('subdir')).toBeTruthy();
+  it('reflects the selected location in the dropdown', () => {
+    render(<FileBrowser {...defaultProps} selectedLocation="minio" />);
+    expect(screen.getByRole('combobox', { name: 'Location' })).toHaveValue('minio');
   });
 
-  it('calls onSelectFile when file clicked', () => {
+  it('hides the file area until a location is chosen', () => {
+    render(<FileBrowser {...defaultProps} />);
+    expect(screen.queryByRole('textbox', { name: 'Filter files' })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Current folder' })).toBeNull();
+  });
+
+  it('lists folders first, then files in natural order', () => {
+    renderAt();
+    expect(rowNames()).toEqual(['zdir', 'a2.tmp', 'a10.tmp', 'b.tmp']);
+    expect(screen.getByText('4 items')).toBeTruthy();
+  });
+
+  it('calls onSelectFile when a row is clicked', () => {
     const onSelect = vi.fn();
-    const file = { filename: 'data.tmp', type: 'file' };
-    const { getByText } = render(
+    renderAt({ onSelectFile: onSelect });
+    fireEvent.click(screen.getByRole('button', { name: 'b.tmp' }));
+    expect(onSelect).toHaveBeenCalledWith({ filename: 'b.tmp', type: 'file' });
+  });
+
+  it('highlights the selected file only in its own folder', () => {
+    const { rerender } = renderAt({ path: 'sub', selectedFile: 'sub/b.tmp' });
+    const selected = screen.getByRole('button', { name: 'b.tmp' });
+    expect(selected).toHaveAttribute('aria-current', 'true');
+    expect(selected).toHaveClass('is-selected');
+    expect(screen.getByRole('button', { name: 'a2.tmp' })).not.toHaveAttribute('aria-current');
+
+    rerender(
       <FileBrowser
         {...defaultProps}
         selectedLocation="TestDir"
-        files={[file]}
-        onSelectFile={onSelect}
+        files={files}
+        path=""
+        selectedFile="sub/b.tmp"
       />
     );
-    fireEvent.click(getByText('data.tmp'));
-    expect(onSelect).toHaveBeenCalledWith(file);
+    expect(screen.getByRole('button', { name: 'b.tmp' })).not.toHaveAttribute('aria-current');
   });
 
-  it('shows back button when path is set', () => {
-    const { getByText } = render(
-      <FileBrowser {...defaultProps} selectedLocation="TestDir" path="subdir" />
-    );
-    expect(getByText('Back')).toBeTruthy();
+  it('filters the list and reports matches', () => {
+    renderAt();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter files' }), {
+      target: { value: 'A' },
+    });
+    expect(rowNames()).toEqual(['a2.tmp', 'a10.tmp']);
+    expect(screen.getByText('2 of 4 items')).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter files' }), {
+      target: { value: 'nope' },
+    });
+    expect(screen.getByText('No files match “nope”')).toBeTruthy();
   });
 
-  it('hides back button when at root', () => {
-    const { queryByText } = render(
-      <FileBrowser {...defaultProps} selectedLocation="TestDir" path="" />
+  it('clears the filter when the folder changes', () => {
+    const { rerender } = renderAt();
+    const search = screen.getByRole('searchbox', { name: 'Filter files' });
+    fireEvent.change(search, { target: { value: 'a' } });
+
+    rerender(
+      <FileBrowser {...defaultProps} selectedLocation="TestDir" files={files} path="zdir" />
     );
-    expect(queryByText('Back')).toBeNull();
+    expect(screen.getByRole('searchbox', { name: 'Filter files' })).toHaveValue('');
+  });
+
+  it('keeps folder icons out of the accessible name', () => {
+    renderAt();
+    expect(screen.getByRole('button', { name: 'zdir' })).toBeTruthy();
+  });
+
+  it('enables the up button only inside a folder', () => {
+    const onGoBack = vi.fn();
+    const { rerender } = renderAt({ onGoBack });
+    expect(screen.getByRole('button', { name: 'Up one folder' })).toBeDisabled();
+
+    rerender(
+      <FileBrowser
+        {...defaultProps}
+        selectedLocation="TestDir"
+        files={files}
+        path="zdir"
+        onGoBack={onGoBack}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Up one folder' }));
+    expect(onGoBack).toHaveBeenCalled();
+  });
+
+  it('renders breadcrumbs that navigate to ancestor folders', () => {
+    const onNavigate = vi.fn();
+    renderAt({ path: 'one/two', onNavigate });
+    const crumbs = within(screen.getByRole('navigation', { name: 'Current folder' }));
+
+    expect(crumbs.getByRole('button', { name: 'two' })).toHaveAttribute('aria-current', 'location');
+    fireEvent.click(crumbs.getByRole('button', { name: 'one' }));
+    expect(onNavigate).toHaveBeenLastCalledWith('one');
+    fireEvent.click(crumbs.getByRole('button', { name: 'TestDir' }));
+    expect(onNavigate).toHaveBeenLastCalledWith('');
   });
 
   it('does not crash when files is null', () => {
-    const { getByText } = render(
-      <FileBrowser {...defaultProps} selectedLocation="TestDir" files={null} />
-    );
-    expect(getByText('No files found')).toBeTruthy();
+    renderAt({ files: null });
+    expect(screen.getByText('No files found')).toBeTruthy();
   });
 
   it('distinguishes locations errors from loading', () => {
-    const { getByText, queryByText } = render(
-      <FileBrowser {...defaultProps} locations={[]} locationsStatus="error" />
+    const onRetry = vi.fn();
+    render(
+      <FileBrowser
+        {...defaultProps}
+        locations={[]}
+        locationsStatus="error"
+        onRetryLocations={onRetry}
+      />
     );
-    expect(getByText('Failed to load locations.')).toBeTruthy();
-    expect(getByText('Retry')).toBeTruthy();
-    expect(queryByText('Loading locations...')).toBeNull();
+    expect(screen.getByText('Failed to load locations.')).toBeTruthy();
+    expect(screen.queryByText('Loading locations...')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('shows a disabled dropdown while locations load', () => {
+    render(<FileBrowser {...defaultProps} locations={[]} locationsStatus="loading" />);
+    expect(screen.getByRole('combobox', { name: 'Location' })).toBeDisabled();
+    expect(screen.getByText('Loading locations...')).toBeTruthy();
   });
 
   it('distinguishes file errors from empty folders', () => {
-    const { getByText, queryByText } = render(
-      <FileBrowser
-        {...defaultProps}
-        selectedLocation="TestDir"
-        filesStatus="error"
-      />
-    );
-    expect(getByText('Failed to load files.')).toBeTruthy();
-    expect(queryByText('No files found')).toBeNull();
+    renderAt({ filesStatus: 'error' });
+    expect(screen.getByText('Failed to load files.')).toBeTruthy();
+    expect(screen.queryByText('No files found')).toBeNull();
   });
 });
