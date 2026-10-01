@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getLocations, getFiles, getFileUrl } from '../api/sds';
+import { getLocations, getFiles, getFileUrl, isBlueFile } from '../api/sds';
 
 describe('SDS API', () => {
   beforeEach(() => {
@@ -83,6 +83,20 @@ describe('SDS API', () => {
       expect(getFileUrl('a/b?c%25|d', 'hdr', 'MinIO #1')).toBe(
         '/sds/hdr/MinIO%20%231/a/b%3Fc%2525%7Cd'
       );
+    });
+  });
+
+  describe('isBlueFile', () => {
+    it('accepts the extensions SDS can serve', () => {
+      expect(isBlueFile('data.tmp')).toBe(true);
+      expect(isBlueFile('penny.prm')).toBe(true);
+    });
+
+    it('rejects everything else', () => {
+      expect(isBlueFile('main.go')).toBe(false);
+      expect(isBlueFile('config.json')).toBe(false);
+      expect(isBlueFile('data.tmp.bak')).toBe(false);
+      expect(isBlueFile('tmp')).toBe(false);
     });
   });
 });

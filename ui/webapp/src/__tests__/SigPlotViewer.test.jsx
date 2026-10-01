@@ -19,6 +19,7 @@ vi.mock('sigplot', () => ({
       checkresize: vi.fn(),
       change_settings: vi.fn(),
       mimic: vi.fn(),
+      hide_spinner: vi.fn(),
       unmimic: vi.fn(),
       disable_listeners: vi.fn(),
       overlay_href: vi.fn((href, callbacks) => {
@@ -191,6 +192,7 @@ describe('SigPlotViewer', () => {
     act(() => instances[0].loads[0].onerror('Failed to load data'));
 
     expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t load this file.');
+    expect(instances[0].hide_spinner).toHaveBeenCalledWith(true);
   });
 
   it('ignores errors from a superseded load', () => {
@@ -200,6 +202,7 @@ describe('SigPlotViewer', () => {
     act(() => instances[0].loads[0].onerror('stale'));
 
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(instances[0].hide_spinner).not.toHaveBeenCalled();
     expect(screen.getByRole('region', { name: 'Raw file' })).toHaveAttribute('aria-busy', 'true');
   });
 

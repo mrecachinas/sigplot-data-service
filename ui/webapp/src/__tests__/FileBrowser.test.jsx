@@ -185,4 +185,18 @@ describe('FileBrowser', () => {
     expect(screen.getByText('Failed to load files.')).toBeTruthy();
     expect(screen.queryByText('No files found')).toBeNull();
   });
+
+  it('only lists folders and BLUE files', () => {
+    renderAt({
+      files: [
+        { filename: 'main.go', type: 'file' },
+        { filename: 'data.tmp', type: 'file' },
+        { filename: 'config.json', type: 'file' },
+        { filename: 'src', type: 'directory' },
+        { filename: 'p.prm', type: 'file' },
+      ],
+    });
+    expect(rowNames()).toEqual(['src', 'data.tmp', 'p.prm']);
+    expect(screen.getByText('3 items')).toBeTruthy();
+  });
 });

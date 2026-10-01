@@ -210,7 +210,7 @@ export default function App() {
             <Suspense
               fallback={
                 <div className="empty-state" role="status">
-                  <span className="spinner" aria-hidden="true" />
+                  <span className="sds-spinner" aria-hidden="true" />
                   <p className="empty-state-text">Loading plots...</p>
                 </div>
               }

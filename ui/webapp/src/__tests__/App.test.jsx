@@ -5,7 +5,8 @@ import '@testing-library/jest-dom/vitest';
 import App from '../App';
 import { getLocations, getFiles, getFileUrl } from '../api/sds';
 
-vi.mock('../api/sds', () => ({
+vi.mock('../api/sds', async (importOriginal) => ({
+  ...(await importOriginal()),
   getLocations: vi.fn(),
   getFiles: vi.fn(),
   getFileUrl: vi.fn((file, mode, location) => `/mock/${mode}/${location}/${file}`),

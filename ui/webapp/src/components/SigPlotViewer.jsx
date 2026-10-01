@@ -100,7 +100,10 @@ function SigPlotPanel({ href, layerOptions, title, fileName, onPlot }) {
           setStatus('ready');
         },
         onerror: () => {
-          if (latestHrefRef.current === href) setStatus('error');
+          if (latestHrefRef.current !== href) return;
+          setStatus('error');
+          // SigPlot leaves its spinner running when an SDS request fails.
+          if (plot.hide_spinner) plot.hide_spinner(true);
         },
       },
       layerOptions && { ...layerOptions }
@@ -119,12 +122,9 @@ function SigPlotPanel({ href, layerOptions, title, fileName, onPlot }) {
             {fileName}
           </span>
         )}
-        {status === 'loading' && (
-          <span className="plot-card-status">
-            <span className="spinner" aria-hidden="true" />
-            Loading
-          </span>
-        )}
+        {/* SigPlot draws its own spinner over the plot while loading, so the
+            header only needs a text status. */}
+        {status === 'loading' && <span className="plot-card-status">Loading…</span>}
       </header>
       <div className="plot-card-body">
         <div ref={containerRef} className="plot-canvas" data-testid="plot-canvas" />

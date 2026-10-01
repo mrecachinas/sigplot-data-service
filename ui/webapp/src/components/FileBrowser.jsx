@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { isBlueFile } from '../api/sds';
 import {
   ArrowUpIcon,
   ChevronRightIcon,
@@ -99,8 +100,13 @@ export default function FileBrowser({
     setFilter('');
   }, [selectedLocation, path]);
 
+  // Only folders and BLUE files can be browsed or plotted; anything else
+  // (source, config) would just fail to load.
   const sortedFiles = useMemo(
-    () => (Array.isArray(files) ? [...files].sort(byTypeThenName) : []),
+    () =>
+      Array.isArray(files)
+        ? files.filter((f) => f.type === 'directory' || isBlueFile(f.filename)).sort(byTypeThenName)
+        : [],
     [files]
   );
   const query = filter.trim().toLowerCase();

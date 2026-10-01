@@ -1,5 +1,12 @@
 const SDS_BASE = '/sds';
 
+// SDS serves X-Midas BLUE files, which it recognizes by these extensions.
+const BLUE_FILE = /\.(tmp|prm)$/;
+
+export function isBlueFile(filename) {
+  return BLUE_FILE.test(filename);
+}
+
 function encodePath(path) {
   return path
     .split('/')

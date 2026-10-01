@@ -204,7 +204,8 @@ button {
   text-decoration: underline;
 }
 
-.spinner {
+/* Namespaced: SigPlot's own spinner element also uses the class "spinner". */
+.sds-spinner {
   display: inline-block;
   width: 12px;
   height: 12px;
@@ -221,7 +222,7 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spinner {
+  .sds-spinner {
     animation-duration: 2.4s;
   }
 }
