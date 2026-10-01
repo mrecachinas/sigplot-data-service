@@ -31,8 +31,8 @@ func ApplyCXmode(datain []float64, cxmode string, complexData bool) []float64 {
 				mag2 := datain[i]*datain[i] + datain[i+1]*datain[i+1]
 				mag2 = math.Max(mag2, loThresh)
 				outData[i/2] = 20 * math.Log10(mag2)
-			default: //Defaults to "real"
-				log.Println("Unkown cxmode", cxmode, "defaulting to Re")
+			default:
+				log.Println("Unknown cxmode", cxmode, "defaulting to Re")
 				outData[i/2] = datain[i]
 			}
 		}
@@ -70,44 +70,35 @@ func ApplyCXmode(datain []float64, cxmode string, complexData bool) []float64 {
 			return datain
 
 		}
-		return datain //Defaults to "Real" or passthrough
+		return datain
 
 	}
 }
 
 func DownSampleLineInY(datain []float64, outxsize int, transform string) []float64 {
 	numLines := len(datain) / outxsize
+	processSlice := make([]float64, numLines)
 	outData := make([]float64, outxsize)
-
-	// Transpose: convert row-major to column-major for sequential access
-	transposed := make([]float64, len(datain))
-	for r := 0; r < numLines; r++ {
-		for c := 0; c < outxsize; c++ {
-			transposed[c*numLines+r] = datain[r*outxsize+c]
-		}
-	}
-
-	// Now each column is contiguous in memory
 	for x := 0; x < outxsize; x++ {
-		start := x * numLines
-		outData[x] = Transform(transposed[start:start+numLines], transform)
+		for y := 0; y < numLines; y++ {
+			processSlice[y] = datain[y*outxsize+x]
+		}
+		outData[x] = Transform(processSlice, transform)
 	}
 	return outData
 }
 
 func DownSampleLineInX(datain []float64, outxsize int, transform string, outData []float64, outLineNum int) {
-	//var inputysize int =len(datain)/framesize
 	var xelementsperoutput float64
 	xelementsperoutput = float64(len(datain)) / float64(outxsize)
-	//var thinxdata = make([]float64,outxsize)
-	if xelementsperoutput > 1 { // Expansion
+	if xelementsperoutput > 1 {
 		for x := 0; x < outxsize; x++ {
 			var startelement int
 			var endelement int
-			if x != (outxsize - 1) { // Not last element
+			if x != (outxsize - 1) {
 				startelement = int(math.Round(float64(x) * xelementsperoutput))
 				endelement = int(math.Round(float64(x+1) * xelementsperoutput))
-			} else { // Last element, work backwards
+			} else {
 				endelement = len(datain)
 				startelement = endelement - int(math.Ceil(xelementsperoutput))
 			}
@@ -115,7 +106,7 @@ func DownSampleLineInX(datain []float64, outxsize int, transform string, outData
 			outData[outLineNum*outxsize+x] = Transform(datain[startelement:endelement], transform)
 
 		}
-	} else { // Expand Data by repeating input values into output
+	} else {
 
 		for x := 0; x < outxsize; x++ {
 			index := int(math.Floor(float64(x) * xelementsperoutput))
@@ -138,39 +129,58 @@ func Transform(dataIn []float64, transform string) float64 {
 		}
 		return num
 	case "max":
+		start := 0
 		num := dataIn[0]
-		for _, v := range dataIn[1:] {
+		if num != num {
+			var ok bool
+			start, num, ok = firstNonNaN(dataIn[1:])
+			start++
+			if !ok {
+				log.Println("DoTransform produced NaN")
+				return 0
+			}
+		}
+		for _, v := range dataIn[start+1:] {
 			if v > num {
 				num = v
 			}
 		}
-		if math.IsNaN(num) {
-			log.Println("DoTransform produced NaN")
-			num = 0
-		}
 		return num
 	case "min":
+		start := 0
 		num := dataIn[0]
-		for _, v := range dataIn[1:] {
+		if num != num {
+			var ok bool
+			start, num, ok = firstNonNaN(dataIn[1:])
+			start++
+			if !ok {
+				log.Println("DoTransform produced NaN")
+				return 0
+			}
+		}
+		for _, v := range dataIn[start+1:] {
 			if v < num {
 				num = v
 			}
 		}
-		if math.IsNaN(num) {
-			log.Println("DoTransform produced NaN")
-			num = 0
-		}
 		return num
 	case "maxabs":
-		maxVal := math.Abs(dataIn[0])
-		for _, v := range dataIn[1:] {
+		start := 0
+		num := dataIn[0]
+		if num != num {
+			var ok bool
+			start, num, ok = firstNonNaN(dataIn[1:])
+			start++
+			if !ok {
+				log.Println("DoTransform produced NaN")
+				return 0
+			}
+		}
+		maxVal := math.Abs(num)
+		for _, v := range dataIn[start+1:] {
 			if av := math.Abs(v); av > maxVal {
 				maxVal = av
 			}
-		}
-		if math.IsNaN(maxVal) {
-			log.Println("DoTransform produced NaN")
-			maxVal = 0
 		}
 		return maxVal
 	case "first":
@@ -180,7 +190,7 @@ func Transform(dataIn []float64, transform string) float64 {
 			num = 0
 		}
 		return num
-	default: // Default to first if bad value.
+	default:
 		log.Println("Unknown transform", transform, "using first")
 		num := dataIn[0]
 		if math.IsNaN(num) {
@@ -192,52 +202,45 @@ func Transform(dataIn []float64, transform string) float64 {
 	}
 }
 
-func CreateOutput(dataIn []float64, fileFormat string, zmin, zmax float64, colorMap string) []byte {
-	// for i := 0; i < len(dataIn); i++ {
-	// 	if math.IsNaN(dataIn[i]) {
-	// 		log.Println("CreateOutput NaN", i)
-	// 	}
-	// }
+func firstNonNaN(data []float64) (int, float64, bool) {
+	for i, v := range data {
+		if v == v {
+			return i, v, true
+		}
+	}
+	return 0, math.NaN(), false
+}
 
+func CreateOutput(dataIn []float64, fileFormat string, zmin, zmax float64, colorMap string) []byte {
 	dataOut := new(bytes.Buffer)
 	numColors := 500
 	if fileFormat == "RGBA" {
 		colorPalette := GetCachedPalette(colorMap, numColors)
-		if zmax != zmin {
-			fscale := float64(len(colorPalette)) / (zmax - zmin)
-			maxIndex := len(colorPalette) - 1
-			output := make([]byte, len(dataIn)*4)
-			for i, v := range dataIn {
-				n := (v - zmin) * fscale
-				ci := int(n)
-				if ci > maxIndex {
-					ci = maxIndex
-				}
-				if ci < 0 {
-					ci = 0
-				}
-				offset := i * 4
-				output[offset] = byte(colorPalette[ci].Red)
-				output[offset+1] = byte(colorPalette[ci].Green)
-				output[offset+2] = byte(colorPalette[ci].Blue)
-				output[offset+3] = 255
+		fscale := float64(len(colorPalette)) / math.Abs(zmax-zmin)
+		maxIndex := len(colorPalette) - 1
+		output := make([]byte, len(dataIn)*4)
+		for i, v := range dataIn {
+			n := (v - zmin) * fscale
+			var ci int
+			if math.IsNaN(n) || n <= 0 {
+				ci = 0
+			} else if n > float64(maxIndex) {
+				ci = maxIndex
+			} else {
+				ci = int(n)
 			}
-			return output
-		} else {
-			output := make([]byte, len(dataIn)*4)
-			r := byte(colorPalette[0].Red)
-			g := byte(colorPalette[0].Green)
-			b := byte(colorPalette[0].Blue)
-			for i := 0; i < len(dataIn); i++ {
-				offset := i * 4
-				output[offset] = r
-				output[offset+1] = g
-				output[offset+2] = b
-				output[offset+3] = 255
-			}
-			return output
+			offset := i * 4
+			output[offset] = byte(colorPalette[ci].Red)
+			output[offset+1] = byte(colorPalette[ci].Green)
+			output[offset+2] = byte(colorPalette[ci].Blue)
+			output[offset+3] = 255
 		}
+		return output
 	} else {
+		if len(fileFormat) < 2 {
+			log.Println("Unsupported output type")
+			return dataOut.Bytes()
+		}
 		log.Println("Creating Output of Type ", fileFormat)
 		switch string(fileFormat[1]) {
 		case "B":
@@ -271,17 +274,14 @@ func CreateOutput(dataIn []float64, fileFormat string, zmin, zmax float64, color
 			}
 			return output
 		case "P":
-			extraBits := len(dataIn) % 8
-			for extraBit := 0; extraBit < extraBits; extraBit++ {
-				dataIn = append(dataIn, 0)
-			}
-			numBytes := len(dataIn) / 8
+			numBytes := (len(dataIn) + 7) / 8
 			output := make([]byte, numBytes)
 			for i := 0; i < numBytes; i++ {
 				var b uint8
 				for j := 0; j < 8; j++ {
 					var bit uint8
-					if dataIn[i*8+j] > 0 {
+					idx := i*8 + j
+					if idx < len(dataIn) && dataIn[idx] > 0 {
 						bit = 1
 					} else {
 						bit = 0

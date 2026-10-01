@@ -26,7 +26,7 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 	filename := c.Param("*")
 
 	var rdsRequest sds.RdsRequest
-	if err := c.Bind(&rdsRequest); err != nil {
+	if err := bindRDSRequest(c, &rdsRequest); err != nil {
 		return c.String(http.StatusBadRequest, err.Error())
 	}
 	rdsRequest.ApplyBindDefaults()
@@ -38,11 +38,11 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 			rdsRequest.X1, rdsRequest.Y1, rdsRequest.X2, rdsRequest.Y2,
 		))
 	}
-	if rdsRequest.Outxsize < 1 || rdsRequest.Outysize < 1 {
-		return c.String(http.StatusBadRequest, fmt.Sprintf(
-			"output sizes must be >= 1: outxsize=%d, outysize=%d",
-			rdsRequest.Outxsize, rdsRequest.Outysize,
-		))
+	if err := sds.ValidateOutputSize("outxsize", rdsRequest.Outxsize); err != nil {
+		return c.String(http.StatusBadRequest, err.Error())
+	}
+	if err := sds.ValidateOutputSize("outysize", rdsRequest.Outysize); err != nil {
+		return c.String(http.StatusBadRequest, err.Error())
 	}
 
 	rdsRequest.ComputeRequestSizes()
@@ -80,15 +80,11 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 	var err error
 	start := time.Now()
 	cacheFileName := cache.UrlToCacheFileName(c.Request().URL.String())
+	var fileMetaDataJSON []byte
 	// Check if request has been previously processed and is in cache. If not process request.
-	if a.Cfg.UseCache {
-		data, err = a.Cache.GetDataFromCache(cacheFileName, "outputFiles/")
-		if err != nil {
-			c.Logger().Error("Unable to get data from cache")
-			inCache = false
-		}
-	} else {
-		inCache = false
+	data, fileMetaDataJSON, inCache = a.getCachedOutput(cacheFileName)
+	if !inCache && a.Cfg.UseCache {
+		c.Logger().Error("Unable to get data from cache")
 	}
 
 	// If the output is not already in the cache then read the data file and do the processing.
@@ -157,13 +153,11 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 			data = sds.ProcessRequest(rdsRequest)
 		} else {
 			// For xcut/ycut, the outysize route param serves as outzsize
-			if rdsRequest.Outzsize == 0 {
-				rdsRequest.Outzsize = rdsRequest.Outysize
+			rdsRequest.Outzsize = rdsRequest.Outysize
+			data, err = sds.ProcessLineRequest(rdsRequest, cutType)
+			if err != nil {
+				return c.String(http.StatusBadRequest, err.Error())
 			}
-			data = sds.ProcessLineRequest(rdsRequest, cutType)
-		}
-		if a.Cfg.UseCache {
-			go a.Cache.PutItemInCache(cacheFileName, "outputFiles/", data)
 		}
 
 		// Store MetaData of request off in cache
@@ -187,17 +181,15 @@ func (a *API) GetRDSXYCut(c echo.Context) error {
 		if marshalError != nil {
 			return marshalError
 		}
-		a.Cache.PutItemInCache(cacheFileName+"meta", "outputFiles/", fileMDataJSON)
+		if err := a.putCachedOutput(cacheFileName, data, fileMDataJSON); err != nil {
+			return err
+		}
+		fileMetaDataJSON = fileMDataJSON
 	}
 
 	elapsed := time.Since(start)
 	c.Logger().Infof("Length of output data %d processed in %s", len(data), elapsed.String())
 
-	// Get the metadata for this request to put into the return header.
-	fileMetaDataJSON, metaCacheErr := a.Cache.GetDataFromCache(cacheFileName+"meta", "outputFiles/")
-	if metaCacheErr != nil {
-		return metaCacheErr
-	}
 	var fileMDataCache sds.FileMetaData
 	marshalError := json.Unmarshal(fileMetaDataJSON, &fileMDataCache)
 	if marshalError != nil {

@@ -24,7 +24,7 @@ func (a *API) GetLDS(c echo.Context) error {
 	//Get URL Parameters
 	//url - /sds/lds/x1/x2/outxsize/outzsize
 	var rdsRequest sds.RdsRequest
-	if err := c.Bind(&rdsRequest); err != nil {
+	if err := bindRDSRequest(c, &rdsRequest); err != nil {
 		return c.String(http.StatusBadRequest, err.Error())
 	}
 	rdsRequest.ApplyBindDefaults()
@@ -34,13 +34,10 @@ func (a *API) GetLDS(c echo.Context) error {
 		return c.String(http.StatusBadRequest, err.Error())
 	}
 
-	if rdsRequest.Outxsize < 1 {
-		err := fmt.Errorf("outxsize %d must be >= 1", rdsRequest.Outxsize)
+	if err := sds.ValidateOutputSize("outxsize", rdsRequest.Outxsize); err != nil {
 		return c.String(http.StatusBadRequest, err.Error())
 	}
-
-	if rdsRequest.Outzsize < 1 {
-		err := fmt.Errorf("outzsize %d must be >= 1", rdsRequest.Outzsize)
+	if err := sds.ValidateOutputSize("outzsize", rdsRequest.Outzsize); err != nil {
 		return c.String(http.StatusBadRequest, err.Error())
 	}
 
@@ -65,15 +62,11 @@ func (a *API) GetLDS(c echo.Context) error {
 	var err error
 	start := time.Now()
 	cacheFileName := cache.UrlToCacheFileName(c.Request().URL.String())
+	var fileMetaDataJSON []byte
 	// Check if request has been previously processed and is in cache. If not process request.
-	if a.Cfg.UseCache {
-		data, err = a.Cache.GetDataFromCache(cacheFileName, "outputFiles/")
-		if err != nil {
-			c.Logger().Error("Unable to get data from cache")
-			inCache = false
-		}
-	} else {
-		inCache = false
+	data, fileMetaDataJSON, inCache = a.getCachedOutput(cacheFileName)
+	if !inCache && a.Cfg.UseCache {
+		c.Logger().Error("Unable to get data from cache")
 	}
 
 	// If the output is not already in the cache then read the data file and do the processing.
@@ -122,10 +115,9 @@ func (a *API) GetLDS(c echo.Context) error {
 			rdsRequest.FindZminMax(a.Cfg.MaxBytesZminZmax)
 		}
 
-		data = sds.ProcessLineRequest(rdsRequest, "lds")
-
-		if a.Cfg.UseCache {
-			go a.Cache.PutItemInCache(cacheFileName, "outputFiles/", data)
+		data, err = sds.ProcessLineRequest(rdsRequest, "lds")
+		if err != nil {
+			return c.String(http.StatusBadRequest, err.Error())
 		}
 
 		// Store MetaData of request off in cache
@@ -149,7 +141,10 @@ func (a *API) GetLDS(c echo.Context) error {
 		if marshalError != nil {
 			return marshalError
 		}
-		a.Cache.PutItemInCache(cacheFileName+"meta", "outputFiles/", fileMDataJSON)
+		if err := a.putCachedOutput(cacheFileName, data, fileMDataJSON); err != nil {
+			return err
+		}
+		fileMetaDataJSON = fileMDataJSON
 
 	}
 	elapsed := time.Since(start)
@@ -159,11 +154,6 @@ func (a *API) GetLDS(c echo.Context) error {
 		elapsed,
 	)
 
-	// Get the metadata for this request to put into the return header.
-	fileMetaDataJSON, err := a.Cache.GetDataFromCache(cacheFileName+"meta", "outputFiles/")
-	if err != nil {
-		return err
-	}
 	var fileMDataCache sds.FileMetaData
 	marshalError := json.Unmarshal(fileMetaDataJSON, &fileMDataCache)
 	if marshalError != nil {

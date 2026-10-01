@@ -1,10 +1,19 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { Plot } from 'sigplot';
+
+function removeLayer(plot, layer) {
+  if (!plot || layer == null) return;
+  if (Array.isArray(layer)) {
+    layer.forEach((entry) => removeLayer(plot, entry));
+    return;
+  }
+  if (plot.remove_layer) plot.remove_layer(layer);
+}
 
 function SigPlotPanel({ href, layerOptions, options, plotRef, title }) {
   const containerRef = useRef(null);
+  const latestHrefRef = useRef(null);
 
-  // Create plot once on mount
   useEffect(() => {
     if (!containerRef.current) return;
     const plot = new Plot(containerRef.current, {
@@ -16,20 +25,31 @@ function SigPlotPanel({ href, layerOptions, options, plotRef, title }) {
     });
     plotRef.current = plot;
     return () => {
-      if (plot.dispose) plot.dispose();
+      latestHrefRef.current = null;
+      if (plot.deoverlay) plot.deoverlay();
+      if (containerRef.current) containerRef.current.replaceChildren();
       plotRef.current = null;
     };
   }, []);
 
-  // Load file when href changes
   useEffect(() => {
     const plot = plotRef.current;
     if (!plot) return;
+    latestHrefRef.current = href;
     plot.deoverlay();
     if (href) {
-      plot.overlay_href(href, null, layerOptions);
+      const layer = plot.overlay_href(
+        href,
+        () => {
+          if (latestHrefRef.current !== href) removeLayer(plot, layer);
+        },
+        layerOptions && { ...layerOptions }
+      );
     }
-  }, [href]);
+    return () => {
+      if (latestHrefRef.current === href) latestHrefRef.current = null;
+    };
+  }, [href, layerOptions]);
 
   return (
     <div className="plot-container">
@@ -42,6 +62,7 @@ function SigPlotPanel({ href, layerOptions, options, plotRef, title }) {
 export default function SigPlotViewer({ rawHref, sdsHref }) {
   const rawPlotRef = useRef(null);
   const sdsPlotRef = useRef(null);
+  const sdsLayerOptions = useMemo(() => ({ layerType: 'SDS' }), []);
 
   return (
     <>
@@ -53,7 +74,7 @@ export default function SigPlotViewer({ rawHref, sdsHref }) {
       <SigPlotPanel
         href={sdsHref}
         plotRef={sdsPlotRef}
-        layerOptions={{ layerType: "SDS" }}
+        layerOptions={sdsLayerOptions}
         title="SDS Tiled View"
       />
     </>

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/spectriclabs/sigplot-data-service/internal/bluefile"
 	"github.com/spectriclabs/sigplot-data-service/internal/cache"
 	"github.com/spectriclabs/sigplot-data-service/internal/config"
@@ -14,62 +13,11 @@ import (
 	"io"
 	"log"
 	"math"
-	"net/http"
 	"os"
-	"path"
 	"runtime"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
-
-func GetURLQueryParamFloat(r *http.Request, keyname string) (float64, bool) {
-	keys, ok := r.URL.Query()[keyname]
-
-	if !ok || len(keys[0]) < 1 {
-		return 0.0, false
-	}
-	retval, err := strconv.ParseFloat(keys[0], 64)
-	if err != nil {
-		log.Println("Url Param ", keyname, "  is invalid")
-		return 0.0, false
-	}
-	return retval, true
-}
-
-func GetURLQueryParamInt(r *http.Request, keyname string) (int, bool) {
-	keys, ok := r.URL.Query()[keyname]
-
-	if !ok || len(keys[0]) < 1 {
-		return 0, false
-	}
-	retval, err := strconv.Atoi(keys[0])
-	if err != nil {
-		log.Println("Url Param ", keyname, "  is invalid")
-		return 0, false
-	}
-	return retval, true
-}
-
-func GetURLQueryParamString(r *http.Request, keyname string) (string, bool) {
-	keys, ok := r.URL.Query()[keyname]
-
-	if !ok || len(keys[0]) < 1 {
-		return "", false
-	}
-	return keys[0], true
-}
-
-func GetURLArgumentInt(url string, positionNum int) (int, bool) {
-	pathData := strings.Split(url, "/")
-	param := pathData[positionNum]
-	retval, err := strconv.Atoi(param)
-	if err != nil {
-		return 0, false
-	}
-	return retval, true
-}
 
 func IntInSlice(a int, list []int) bool {
 	for _, b := range list {
@@ -94,10 +42,6 @@ func getBytesFromReaderMu(reader io.ReadSeeker, firstByte int, numbytes int, mu 
 	return outData, true
 }
 
-func GetBytesFromReader(reader io.ReadSeeker, firstByte int, numbytes int) ([]byte, bool) {
-	return getBytesFromReaderMu(reader, firstByte, numbytes, IoMutex)
-}
-
 func ProcessLine(outData []float64, outLineNum int, done chan bool, dataRequest RdsRequest) {
 	bytesPerAtom, complexFlag := bluefile.GetFileTypeInfo(dataRequest.FileFormat)
 
@@ -112,9 +56,6 @@ func ProcessLine(outData []float64, outLineNum int, done chan bool, dataRequest 
 	bytesLength := float64(dataRequest.Xsize)*bytesPerElement + (firstDataByte - float64(firstByteInt))
 	bytesLengthInt := int(math.Ceil(bytesLength))
 	mu := dataRequest.ReaderMutex
-	if mu == nil {
-		mu = IoMutex
-	}
 	filedata, _ := getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+firstByteInt, bytesLengthInt, mu)
 	dataToProcess := bluefile.ConvertFileData(filedata, dataRequest.FileFormat)
 
@@ -154,8 +95,10 @@ func OpenDataSource(cfg *config.Config, sdsCache *cache.Cache, locationName stri
 	}
 	switch currentLocation.LocationType {
 	case "localFile":
-		currentPath := currentLocation.Path
-		fullFilepath := path.Join(currentPath, filePath)
+		fullFilepath, err := ResolvePath(currentLocation.Path, filePath)
+		if err != nil {
+			return nil, err
+		}
 		log.Println("Reading Local File. LocationName=", locationName, "fullPath=", fullFilepath)
 		file, err := os.Open(fullFilepath)
 		if err != nil {
@@ -166,18 +109,33 @@ func OpenDataSource(cfg *config.Config, sdsCache *cache.Cache, locationName stri
 		return reader, nil
 	case "minio":
 		start := time.Now()
-		fullFilepath := path.Join(currentLocation.Path, filePath)
+		fullFilepath, err := ResolveObjectKey(currentLocation.Path, filePath)
+		if err != nil {
+			return nil, err
+		}
 		cacheFileName := cache.UrlToCacheFileName(fmt.Sprintf("sds_%s%s", currentLocation.MinioBucket, fullFilepath))
-		file, err := sdsCache.GetItemFromCache(cacheFileName, "miniocache/")
+		var file io.ReadSeeker
+		if cfg.UseCache {
+			file, err = sdsCache.GetItemFromCache(cacheFileName, "miniocache/")
+			if err == nil {
+				if cachedFile, ok := file.(*os.File); ok {
+					fi, statErr := cachedFile.Stat()
+					if statErr != nil {
+						cachedFile.Close()
+						return nil, statErr
+					}
+					if fi.Size() <= 0 {
+						cachedFile.Close()
+						return nil, fmt.Errorf("cached minio object %s is empty", fullFilepath)
+					}
+				}
+			}
+		} else {
+			err = os.ErrNotExist
+		}
 		if err != nil {
 			log.Println("Minio File not in local file Cache, Need to fetch")
-			minioClient, err := minio.New(
-				currentLocation.Location,
-				&minio.Options{
-					Creds:  credentials.NewStaticV4(currentLocation.MinioAccessKey, currentLocation.MinioSecretKey, ""),
-					Secure: currentLocation.MinioUseSSL,
-				},
-			)
+			minioClient, err := MinioClientForLocation(currentLocation)
 			elapsed := time.Since(start)
 			log.Println(" Time to Make connection ", elapsed)
 			if err != nil {
@@ -188,26 +146,39 @@ func OpenDataSource(cfg *config.Config, sdsCache *cache.Cache, locationName stri
 			start = time.Now()
 			ctx := context.Background()
 			object, err := minioClient.GetObject(ctx, currentLocation.MinioBucket, fullFilepath, minio.GetObjectOptions{})
-
-			fi, _ := object.Stat()
-			fileData := make([]byte, fi.Size)
-			//var readerr error
-			numRead, readerr := object.Read(fileData)
-			if int64(numRead) != fi.Size || !(readerr == nil || readerr == io.EOF) {
-				log.Println("Error Reading File from from Minio", readerr)
-				log.Println("Expected Bytes: ", fi.Size, "Got Bytes", numRead)
+			if err != nil {
+				log.Println("Error getting Minio object", err)
 				return nil, err
+			}
+			defer object.Close()
+
+			fi, err := object.Stat()
+			if err != nil {
+				log.Println("Error statting Minio object", err)
+				return nil, err
+			}
+			if fi.Size <= 0 {
+				err := fmt.Errorf("minio object %s is empty", fullFilepath)
+				log.Println(err)
+				return nil, err
+			}
+			fileData, readerr := io.ReadAll(object)
+			if readerr != nil || int64(len(fileData)) != fi.Size {
+				log.Println("Error Reading File from from Minio", readerr)
+				log.Println("Expected Bytes: ", fi.Size, "Got Bytes", len(fileData))
+				if readerr != nil {
+					return nil, readerr
+				}
+				return nil, fmt.Errorf("short read from minio object %s", fullFilepath)
 			}
 
 			if cfg.UseCache {
-				sdsCache.PutItemInCache(cacheFileName, "miniocache/", fileData)
-				cacheFileFullpath := path.Join(cfg.CacheLocation, "miniocache", cacheFileName)
-				file, err = os.Open(cacheFileFullpath)
-				if err != nil {
-					log.Println("Error opening Minio Cache File,", err)
+				if err := sdsCache.PutItemInCache(cacheFileName, "miniocache/", fileData); err != nil {
+					log.Println("Error writing Minio Cache File,", err)
 					return nil, err
 				}
 			}
+			return bytes.NewReader(fileData), nil
 		}
 
 		elapsed := time.Since(start)
@@ -223,6 +194,14 @@ func OpenDataSource(cfg *config.Config, sdsCache *cache.Cache, locationName stri
 }
 
 func ProcessRequest(dataRequest RdsRequest) []byte {
+	if err := ValidateOutputSize("outxsize", dataRequest.Outxsize); err != nil {
+		log.Println("invalid ProcessRequest:", err)
+		return nil
+	}
+	if err := ValidateOutputSize("outysize", dataRequest.Outysize); err != nil {
+		log.Println("invalid ProcessRequest:", err)
+		return nil
+	}
 	processedData := make([]float64, dataRequest.Outxsize*dataRequest.Outysize)
 
 	yLinesPerOutput := float64(dataRequest.Ysize) / float64(dataRequest.Outysize)
@@ -288,7 +267,7 @@ func ProcessRequest(dataRequest RdsRequest) []byte {
 	return outData
 }
 
-func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
+func ProcessLineRequest(dataRequest RdsRequest, cutType string) ([]byte, error) {
 	bytesPerAtom, complexFlag := bluefile.GetFileTypeInfo(dataRequest.FileFormat)
 
 	bytesPerElement := bytesPerAtom
@@ -297,9 +276,6 @@ func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
 	}
 
 	mu := dataRequest.ReaderMutex
-	if mu == nil {
-		mu = IoMutex
-	}
 
 	// Get the slice data out of the file. For x the data is continuous, for y cuts, we need to grab one element from each row.
 	var filedata []byte
@@ -309,7 +285,11 @@ func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
 		firstByteInt := int(math.Floor(firstDataByte))
 		bytesLength := float64(dataRequest.Xsize)*bytesPerElement + (firstDataByte - float64(firstByteInt))
 		bytesLengthInt := int(math.Ceil(bytesLength))
-		filedata, _ = getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+firstByteInt, bytesLengthInt, mu)
+		var ok bool
+		filedata, ok = getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+firstByteInt, bytesLengthInt, mu)
+		if !ok {
+			return nil, fmt.Errorf("failed to read %d bytes at offset %d", bytesLengthInt, dataRequest.FileDataOffset+firstByteInt)
+		}
 		dataToProcess = bluefile.ConvertFileData(filedata, dataRequest.FileFormat)
 		//If the data is SP then we might have processed a few more bits than we actually needed on both sides, so reassign data_to_process to correctly point to the numbers of interest
 		if bytesPerAtom < 1 {
@@ -326,15 +306,17 @@ func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
 		log.Println("Getting data from file for y cut")
 		if bytesPerAtom < 1 {
 			log.Println("Don't support y cut for SP data")
-			var empty []byte
-			return empty
+			return nil, fmt.Errorf("y cut for SP data is not supported")
 		}
 		elemSize := int(bytesPerElement)
 		filedata = make([]byte, dataRequest.Ysize*elemSize)
 		for i, row := 0, dataRequest.Ystart; row < (dataRequest.Ystart + dataRequest.Ysize); i, row = i+1, row+1 {
 			dataByte := float64(row*dataRequest.FileXSize+dataRequest.Xstart) * bytesPerElement
 			dataByteInt := int(math.Floor(dataByte))
-			data, _ := getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+dataByteInt, elemSize, mu)
+			data, ok := getBytesFromReaderMu(dataRequest.Reader, dataRequest.FileDataOffset+dataByteInt, elemSize, mu)
+			if !ok {
+				return nil, fmt.Errorf("failed to read y cut row %d at offset %d", row, dataRequest.FileDataOffset+dataByteInt)
+			}
 			copy(filedata[i*elemSize:], data)
 		}
 		dataToProcess = bluefile.ConvertFileData(filedata, dataRequest.FileFormat)
@@ -386,5 +368,5 @@ func ProcessLineRequest(dataRequest RdsRequest, cutType string) []byte {
 	outData := new(bytes.Buffer)
 
 	_ = binary.Write(outData, binary.LittleEndian, &xThinData)
-	return outData.Bytes()
+	return outData.Bytes(), nil
 }

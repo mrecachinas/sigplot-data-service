@@ -27,7 +27,7 @@ func Run() {
 	cfg := ParseCLI()
 	cfg.LocationDetails = ParseSDSConfigFile(cfg.ConfigFile)
 
-	sds.ZminzmaxFileMap = make(map[string]sds.Zminzmax)
+	sds.ResetZminzmaxFileMap()
 
 	if cfg.UseCache {
 		SetupCache(
@@ -103,13 +103,13 @@ func SetupServer(api *api.API) *echo.Echo {
 	e.GET("/sds/lds/:x1/:x2/:outxsize/:outzsize/:location/*", api.GetLDS)
 
 	// Setup SigPlot Data Service UI route
-	webappFS := http.FileServer(ui.GetFileSystem())
 	indexData, err := ui.LoadUI()
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
-	e.GET("/sigplot/ui/*", echo.WrapHandler(http.StripPrefix("/sigplot/ui/", webappFS)))
+	e.GET("/sigplot/ui/*", echo.WrapHandler(ui.FileServer()))
 	e.GET("/*", func(c echo.Context) error {
+		ui.SetIndexHeaders(c.Response())
 		return c.HTMLBlob(http.StatusOK, indexData)
 	})
 

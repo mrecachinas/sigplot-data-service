@@ -101,6 +101,26 @@ func BenchmarkApplyCXmode(b *testing.B) {
 	}
 }
 
+func BenchmarkApplyCXmodeRealLog(b *testing.B) {
+	modes := []string{"Lo", "L2"}
+	source := make([]float64, 1000)
+	for i := range source {
+		source[i] = 1 + float64(i%97)*0.125
+	}
+
+	for _, mode := range modes {
+		b.Run(mode, func(b *testing.B) {
+			data := make([]float64, len(source))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				copy(data, source)
+				ApplyCXmode(data, mode, false)
+			}
+		})
+	}
+}
+
 func BenchmarkCreateOutput(b *testing.B) {
 	sizes := []int{1000, 10000}
 

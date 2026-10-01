@@ -10,8 +10,8 @@ func FuzzConvertFileData(f *testing.F) {
 	for _, fmt := range formats {
 		f.Add([]byte{0x00, 0x00, 0x80, 0x3F}, fmt) // 1.0 as float32 LE
 	}
-	f.Add([]byte{}, "SF")       // empty input
-	f.Add([]byte{0xFF}, "XX")   // unknown format
+	f.Add([]byte{}, "SF")     // empty input
+	f.Add([]byte{0xFF}, "XX") // unknown format
 
 	f.Fuzz(func(t *testing.T, data []byte, format string) {
 		// Should not panic on any input

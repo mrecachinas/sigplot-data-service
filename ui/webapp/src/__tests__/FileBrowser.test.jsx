@@ -6,9 +6,12 @@ import FileBrowser from '../components/FileBrowser';
 describe('FileBrowser', () => {
   const defaultProps = {
     locations: ['TestDir', 'minio'],
+    locationsStatus: 'success',
     selectedLocation: '',
     onSelectLocation: vi.fn(),
+    onRetryLocations: vi.fn(),
     files: [],
+    filesStatus: 'success',
     onSelectFile: vi.fn(),
     path: '',
     onGoBack: vi.fn(),
@@ -68,5 +71,33 @@ describe('FileBrowser', () => {
       <FileBrowser {...defaultProps} selectedLocation="TestDir" path="" />
     );
     expect(queryByText('Back')).toBeNull();
+  });
+
+  it('does not crash when files is null', () => {
+    const { getByText } = render(
+      <FileBrowser {...defaultProps} selectedLocation="TestDir" files={null} />
+    );
+    expect(getByText('No files found')).toBeTruthy();
+  });
+
+  it('distinguishes locations errors from loading', () => {
+    const { getByText, queryByText } = render(
+      <FileBrowser {...defaultProps} locations={[]} locationsStatus="error" />
+    );
+    expect(getByText('Failed to load locations.')).toBeTruthy();
+    expect(getByText('Retry')).toBeTruthy();
+    expect(queryByText('Loading locations...')).toBeNull();
+  });
+
+  it('distinguishes file errors from empty folders', () => {
+    const { getByText, queryByText } = render(
+      <FileBrowser
+        {...defaultProps}
+        selectedLocation="TestDir"
+        filesStatus="error"
+      />
+    );
+    expect(getByText('Failed to load files.')).toBeTruthy();
+    expect(queryByText('No files found')).toBeNull();
   });
 });

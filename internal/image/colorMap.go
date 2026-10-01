@@ -3,7 +3,6 @@ package image
 import (
 	"log"
 	"math"
-	"strconv"
 	"sync"
 )
 
@@ -14,11 +13,22 @@ type Pixel struct {
 	Blue     float64
 }
 
-var paletteCache = make(map[string][]Pixel)
+type paletteKey struct {
+	name string
+	size int
+}
+
+const maxPaletteCacheEntries = 64
+
+var paletteCache = make(map[paletteKey][]Pixel)
 var paletteMu sync.RWMutex
 
 func GetCachedPalette(colorMap string, numColors int) []Pixel {
-	key := colorMap + ":" + strconv.Itoa(numColors)
+	canonical, known := canonicalColorMapName(colorMap)
+	if !known {
+		log.Println("Unknown Colormap", colorMap, "using default RampColormap")
+	}
+	key := paletteKey{canonical, numColors}
 	paletteMu.RLock()
 	if p, ok := paletteCache[key]; ok {
 		paletteMu.RUnlock()
@@ -26,10 +36,13 @@ func GetCachedPalette(colorMap string, numColors int) []Pixel {
 	}
 	paletteMu.RUnlock()
 
-	controlColors := GetColorControlPoints(colorMap)
+	controlColors := GetColorControlPoints(canonical)
 	palette := MakeColorPalette(controlColors, numColors)
 
 	paletteMu.Lock()
+	if _, ok := paletteCache[key]; !ok && len(paletteCache) >= maxPaletteCacheEntries {
+		paletteCache = make(map[paletteKey][]Pixel)
+	}
 	paletteCache[key] = palette
 	paletteMu.Unlock()
 	return palette
@@ -49,7 +62,7 @@ func MakeColorPalette(controlColors []Pixel, numColors int) []Pixel {
 
 	// Exact port of sigplot's ColorMap constructor loop
 	palette := make([]Pixel, 0, numColors)
-	colorindex := 1     // index into colors[] for next boundary
+	colorindex := 1 // index into colors[] for next boundary
 	colorBlockIndex := 1.0
 
 	col1 := colors[0]
@@ -77,9 +90,9 @@ func MakeColorPalette(controlColors []Pixel, numColors int) []Pixel {
 		}
 		factor := factorStep * colorBlockIndex
 		palette = append(palette, Pixel{
-			Red:   col1.Red + factor*(col2.Red-col1.Red),
-			Green: col1.Green + factor*(col2.Green-col1.Green),
-			Blue:  col1.Blue + factor*(col2.Blue-col1.Blue),
+			Red:   interpolateChannel(col1.Red, col2.Red, factor),
+			Green: interpolateChannel(col1.Green, col2.Green, factor),
+			Blue:  interpolateChannel(col1.Blue, col2.Blue, factor),
 		})
 		colorBlockIndex++
 	}
@@ -95,8 +108,32 @@ func MakeColorPalette(controlColors []Pixel, numColors int) []Pixel {
 	return palette
 }
 
-func GetColorControlPoints(colorMap string) []Pixel {
+func interpolateChannel(a, b, factor float64) float64 {
+	product := float64(factor * (b - a))
+	return a + product
+}
+
+func canonicalColorMapName(colorMap string) (string, bool) {
 	switch colorMap {
+	case "Greyscale",
+		"Ramp Colormap",
+		"Color Wheel",
+		"Spectrum",
+		"calewhite",
+		"HotDesat",
+		"Sunset":
+		return colorMap, true
+	default:
+		return "Ramp Colormap", false
+	}
+}
+
+func GetColorControlPoints(colorMap string) []Pixel {
+	canonical, known := canonicalColorMapName(colorMap)
+	if !known {
+		log.Println("Unknown Colormap", colorMap, "using default RampColormap")
+	}
+	switch canonical {
 	case "Greyscale":
 		return []Pixel{
 			{0, 0, 0, 0},
@@ -164,16 +201,6 @@ func GetColorControlPoints(colorMap string) []Pixel {
 			{87, 100, 72, 0},
 			{100, 100, 100, 76},
 		}
-	default:
-		log.Println("Unknown Colormap", colorMap, "using default RampColormap")
-		return []Pixel{
-			{0, 0, 0, 15},
-			{10, 0, 0, 50},
-			{31, 0, 65, 75},
-			{50, 0, 85, 0},
-			{70, 75, 80, 0},
-			{83, 100, 60, 0},
-			{100, 100, 0, 0},
-		}
 	}
+	return nil
 }

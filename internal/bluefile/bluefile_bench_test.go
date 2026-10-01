@@ -7,9 +7,9 @@ import (
 
 func BenchmarkConvertFileData(b *testing.B) {
 	type formatSpec struct {
-		name          string
-		format        string
-		bytesPerElem  int
+		name         string
+		format       string
+		bytesPerElem int
 	}
 
 	formats := []formatSpec{

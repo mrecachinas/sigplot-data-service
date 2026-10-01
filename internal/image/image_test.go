@@ -1,6 +1,7 @@
 package image
 
 import (
+	"bytes"
 	"math"
 	"testing"
 )
@@ -48,9 +49,30 @@ func TestTransformNaN(t *testing.T) {
 	}
 }
 
+func TestTransformSkipsNaNForExtrema(t *testing.T) {
+	tests := []struct {
+		name      string
+		data      []float64
+		transform string
+		want      float64
+	}{
+		{"max leading NaN", []float64{math.NaN(), -2, 5, 1}, "max", 5},
+		{"min leading NaN", []float64{math.NaN(), -2, 5, 1}, "min", -2},
+		{"maxabs leading NaN", []float64{math.NaN(), -2, 5, 1}, "maxabs", 5},
+		{"max all NaN", []float64{math.NaN(), math.NaN()}, "max", 0},
+		{"min all NaN", []float64{math.NaN(), math.NaN()}, "min", 0},
+		{"maxabs all NaN", []float64{math.NaN(), math.NaN()}, "maxabs", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Transform(tt.data, tt.transform); got != tt.want {
+				t.Fatalf("Transform(%q) = %v, want %v", tt.transform, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestApplyCXmodeComplex(t *testing.T) {
-	// Complex data: pairs of (real, imag)
-	// 3+4i => magnitude=5, phase=atan2(4,3)
 	datain := []float64{3, 4}
 
 	t.Run("Ma", func(t *testing.T) {
@@ -104,11 +126,9 @@ func TestApplyCXmodeReal(t *testing.T) {
 
 	t.Run("Ph real", func(t *testing.T) {
 		out := ApplyCXmode(datain, "Ph", false)
-		// atan2(0, -3) = pi
 		if math.Abs(out[0]-math.Pi) > 1e-10 {
 			t.Errorf("Ph(-3) = %v, want %v", out[0], math.Pi)
 		}
-		// atan2(0, 5) = 0
 		if out[1] != 0.0 {
 			t.Errorf("Ph(5) = %v, want 0", out[1])
 		}
@@ -132,11 +152,6 @@ func TestApplyCXmodeReal(t *testing.T) {
 }
 
 func TestDownSampleLineInY(t *testing.T) {
-	// 6 elements, outxsize=3 => 2 lines of 3 elements
-	// line0: [1,2,3], line1: [4,5,6]
-	// For column 0: transform([1,4], "mean") = 2.5
-	// For column 1: transform([2,5], "mean") = 3.5
-	// For column 2: transform([3,6], "mean") = 4.5
 	data := []float64{1, 2, 3, 4, 5, 6}
 	out := DownSampleLineInY(data, 3, "mean")
 	if len(out) != 3 {
@@ -166,11 +181,9 @@ func TestDownSampleLineInYSingleLine(t *testing.T) {
 func TestCreateOutputRGBA(t *testing.T) {
 	data := []float64{0, 0.5, 1.0}
 	out := CreateOutput(data, "RGBA", 0, 1.0, "Greyscale")
-	// 3 data points * 4 bytes (RGBA) = 12 bytes
 	if len(out) != 12 {
 		t.Fatalf("len = %d, want 12", len(out))
 	}
-	// Each pixel should have alpha=255
 	for i := 0; i < 3; i++ {
 		alpha := out[i*4+3]
 		if alpha != 255 {
@@ -180,18 +193,77 @@ func TestCreateOutputRGBA(t *testing.T) {
 }
 
 func TestCreateOutputRGBAEqualZminZmax(t *testing.T) {
-	data := []float64{5, 5, 5}
-	out := CreateOutput(data, "RGBA", 5, 5, "Greyscale")
-	if len(out) != 12 {
-		t.Fatalf("len = %d, want 12", len(out))
-	}
-	// When zmin==zmax, all pixels use colorPalette[0]
-	// All pixels should be identical
-	for i := 1; i < 3; i++ {
-		for j := 0; j < 4; j++ {
-			if out[i*4+j] != out[j] {
-				t.Errorf("pixel %d byte %d = %d, want %d (same as pixel 0)", i, j, out[i*4+j], out[j])
+	palette := GetCachedPalette("Greyscale", 500)
+	out := CreateOutput([]float64{4, 5, 6}, "RGBA", 5, 5, "Greyscale")
+	wantIndexes := []int{0, 0, len(palette) - 1}
+	assertRGBAIndexes(t, out, palette, wantIndexes)
+}
+
+func TestCreateOutputRGBASpecialValues(t *testing.T) {
+	palette := GetCachedPalette("Greyscale", 500)
+	out := CreateOutput([]float64{
+		math.Inf(1),
+		math.Inf(-1),
+		math.NaN(),
+		1e30,
+		-1e30,
+	}, "RGBA", 0, 1, "Greyscale")
+	wantIndexes := []int{len(palette) - 1, 0, 0, len(palette) - 1, 0}
+	assertRGBAIndexes(t, out, palette, wantIndexes)
+}
+
+func TestCreateOutputRGBAReversedRangeMatchesSigplot(t *testing.T) {
+	palette := GetCachedPalette("Greyscale", 500)
+	out := CreateOutput([]float64{10, 15, 0}, "RGBA", 10, 0, "Greyscale")
+	wantIndexes := []int{0, 250, 0}
+	assertRGBAIndexes(t, out, palette, wantIndexes)
+}
+
+func TestCreateOutputPackedBits(t *testing.T) {
+	for n := 1; n <= 17; n++ {
+		data := make([]float64, n)
+		for i := range data {
+			if i%3 != 1 {
+				data[i] = 1
 			}
 		}
+		got := CreateOutput(data, "SP", 0, 0, "")
+		want := packBitsReference(data)
+		if !bytes.Equal(got, want) {
+			t.Fatalf("n=%d packed bits = %08b, want %08b", n, got, want)
+		}
 	}
+}
+
+func TestCreateOutputInvalidFormat(t *testing.T) {
+	for _, format := range []string{"", "S", "XX"} {
+		if out := CreateOutput([]float64{1}, format, 0, 1, ""); len(out) != 0 {
+			t.Fatalf("CreateOutput(%q) len = %d, want 0", format, len(out))
+		}
+	}
+}
+
+func assertRGBAIndexes(t *testing.T, out []byte, palette []Pixel, wantIndexes []int) {
+	t.Helper()
+	if len(out) != len(wantIndexes)*4 {
+		t.Fatalf("len = %d, want %d", len(out), len(wantIndexes)*4)
+	}
+	for i, idx := range wantIndexes {
+		offset := i * 4
+		want := []byte{byte(palette[idx].Red), byte(palette[idx].Green), byte(palette[idx].Blue), 255}
+		got := out[offset : offset+4]
+		if !bytes.Equal(got, want) {
+			t.Fatalf("pixel %d = %v, want %v (palette index %d)", i, got, want, idx)
+		}
+	}
+}
+
+func packBitsReference(data []float64) []byte {
+	out := make([]byte, (len(data)+7)/8)
+	for i, v := range data {
+		if v > 0 {
+			out[i/8] |= 1 << uint(7-(i%8))
+		}
+	}
+	return out
 }

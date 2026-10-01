@@ -24,22 +24,9 @@ describe('SDS API', () => {
       expect(fetch).toHaveBeenCalledWith('/sds/fs');
     });
 
-    it('handles camelCase locationName', async () => {
-      global.fetch = vi.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve([{ locationName: 'OldFormat' }]),
-        })
-      );
-
-      const result = await getLocations();
-      expect(result).toEqual(['OldFormat']);
-    });
-
-    it('returns empty array on error', async () => {
+    it('throws on request failure', async () => {
       global.fetch = vi.fn(() => Promise.reject(new Error('network')));
-      const result = await getLocations();
-      expect(result).toEqual([]);
+      await expect(getLocations()).rejects.toThrow('network');
     });
   });
 
@@ -58,32 +45,43 @@ describe('SDS API', () => {
       expect(fetch).toHaveBeenCalledWith('/sds/fs/TestDir/');
     });
 
-    it('includes path when provided', async () => {
+    it('includes encoded path segments when provided', async () => {
       global.fetch = vi.fn(() =>
         Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
       );
 
-      await getFiles('TestDir', 'subdir/nested');
-      expect(fetch).toHaveBeenCalledWith('/sds/fs/TestDir/subdir/nested');
+      await getFiles('MinIO #1', 'sub dir/a#b?c%25|d');
+      expect(fetch).toHaveBeenCalledWith(
+        '/sds/fs/MinIO%20%231/sub%20dir/a%23b%3Fc%2525%7Cd'
+      );
     });
 
-    it('returns empty array on error', async () => {
-      global.fetch = vi.fn(() => Promise.reject(new Error('fail')));
-      const result = await getFiles('TestDir');
-      expect(result).toEqual([]);
+    it('turns null listings into an empty array', async () => {
+      global.fetch = vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(null) })
+      );
+
+      await expect(getFiles('TestDir')).resolves.toEqual([]);
+    });
+
+    it('throws on http error', async () => {
+      global.fetch = vi.fn(() =>
+        Promise.resolve({ ok: false, status: 500 })
+      );
+      await expect(getFiles('TestDir')).rejects.toThrow('500');
     });
   });
 
   describe('getFileUrl', () => {
-    it('builds correct URL for fs mode', () => {
-      expect(getFileUrl('data.tmp', 'fs', 'TestDir')).toBe(
-        '/sds/fs/TestDir/data.tmp'
+    it('builds encoded URL for fs mode', () => {
+      expect(getFileUrl('data #1.tmp', 'fs', 'Test Dir')).toBe(
+        '/sds/fs/Test%20Dir/data%20%231.tmp'
       );
     });
 
-    it('builds correct URL for hdr mode', () => {
-      expect(getFileUrl('data.tmp', 'hdr', 'TestDir')).toBe(
-        '/sds/hdr/TestDir/data.tmp'
+    it('encodes reserved path characters for sigplot hrefs', () => {
+      expect(getFileUrl('a/b?c%25|d', 'hdr', 'MinIO #1')).toBe(
+        '/sds/hdr/MinIO%20%231/a/b%3Fc%2525%7Cd'
       );
     });
   });

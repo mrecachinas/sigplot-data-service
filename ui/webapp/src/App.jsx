@@ -1,45 +1,71 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import FileBrowser from './components/FileBrowser';
-import SigPlotViewer from './components/SigPlotViewer';
 import { getLocations, getFiles, getFileUrl } from './api/sds';
+
+const SigPlotViewer = lazy(() => import('./components/SigPlotViewer'));
 
 export default function App() {
   const [locations, setLocations] = useState([]);
+  const [locationsStatus, setLocationsStatus] = useState('loading');
   const [selectedLocation, setSelectedLocation] = useState('');
   const [files, setFiles] = useState([]);
+  const [filesStatus, setFilesStatus] = useState('idle');
   const [path, setPath] = useState('');
-  const [pathStack, setPathStack] = useState([]);
   const [rawHref, setRawHref] = useState(null);
   const [sdsHref, setSdsHref] = useState(null);
 
-  // Fetch locations on mount and poll every 5s
-  useEffect(() => {
-    const fetchLocations = async () => {
-      const locs = await getLocations();
+  const fetchLocations = useCallback(async (signal) => {
+    setLocationsStatus('loading');
+    try {
+      const locs = await getLocations({ signal });
       setLocations(locs);
-    };
-    fetchLocations();
-    const interval = setInterval(fetchLocations, 5000);
-    return () => clearInterval(interval);
+      setLocationsStatus('success');
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      setLocations([]);
+      setLocationsStatus('error');
+    }
   }, []);
 
-  // Fetch files when location or path changes
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchLocations(controller.signal);
+    return () => controller.abort();
+  }, [fetchLocations]);
+
   useEffect(() => {
     if (!selectedLocation) {
       setFiles([]);
+      setFilesStatus('idle');
       return;
     }
+    let ignore = false;
+    const controller = new AbortController();
     const fetchFiles = async () => {
-      const fileList = await getFiles(selectedLocation, path);
-      setFiles(fileList);
+      setFilesStatus('loading');
+      try {
+        const fileList = await getFiles(selectedLocation, path, {
+          signal: controller.signal,
+        });
+        if (ignore) return;
+        setFiles(Array.isArray(fileList) ? fileList : []);
+        setFilesStatus('success');
+      } catch (error) {
+        if (ignore || error.name === 'AbortError') return;
+        setFiles([]);
+        setFilesStatus('error');
+      }
     };
     fetchFiles();
+    return () => {
+      ignore = true;
+      controller.abort();
+    };
   }, [selectedLocation, path]);
 
   const handleSelectLocation = useCallback((loc) => {
     setSelectedLocation(loc);
     setPath('');
-    setPathStack([]);
     setRawHref(null);
     setSdsHref(null);
   }, []);
@@ -47,7 +73,6 @@ export default function App() {
   const handleSelectFile = useCallback(
     (file) => {
       if (file.type === 'directory') {
-        setPathStack((prev) => [...prev, path]);
         setPath((prev) => (prev ? `${prev}/${file.filename}` : file.filename));
       } else {
         const filePath = path ? `${path}/${file.filename}` : file.filename;
@@ -59,12 +84,7 @@ export default function App() {
   );
 
   const handleGoBack = useCallback(() => {
-    setPathStack((prev) => {
-      const next = [...prev];
-      const parentPath = next.pop();
-      setPath(parentPath || '');
-      return next;
-    });
+    setPath((prev) => prev.split('/').slice(0, -1).join('/'));
   }, []);
 
   return (
@@ -75,14 +95,19 @@ export default function App() {
       <main>
         <FileBrowser
           locations={locations}
+          locationsStatus={locationsStatus}
           selectedLocation={selectedLocation}
           onSelectLocation={handleSelectLocation}
+          onRetryLocations={() => fetchLocations()}
           files={files}
+          filesStatus={filesStatus}
           onSelectFile={handleSelectFile}
           path={path}
           onGoBack={handleGoBack}
         />
-        <SigPlotViewer rawHref={rawHref} sdsHref={sdsHref} />
+        <Suspense fallback={<div className="plot-container">Loading plots...</div>}>
+          <SigPlotViewer rawHref={rawHref} sdsHref={sdsHref} />
+        </Suspense>
       </main>
     </div>
   );

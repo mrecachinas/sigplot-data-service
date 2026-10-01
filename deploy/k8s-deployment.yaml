@@ -17,21 +17,40 @@ spec:
     spec:
       containers:
       - name: sigplot-data-service
-        image: sigplot-data-service:0.7
+        image: sds:0.7
         args:
-        - --config=/opt/sds/sdsConfig.json
+        - --config=/opt/sds/sds_config.json
+        - --cache-location=/opt/sds/sdscache
         ports:
-        - containerPort: 1338
+        - name: http
+          containerPort: 5055
+        livenessProbe:
+          httpGet:
+            path: /sds/fs
+            port: http
+        readinessProbe:
+          httpGet:
+            path: /sds/fs
+            port: http
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+          runAsGroup: 65532
         volumeMounts:
         - name: sds-secret
-          mountPath: /opt/sds/sdsConfig.json
-          subPath: sdsConfig.json
+          mountPath: /opt/sds/sds_config.json
+          subPath: sds_config.json
           readOnly: true
+        - name: sds-cache
+          mountPath: /opt/sds/sdscache
       volumes:
       - name: sds-secret
         secret:
           defaultMode: 420
           secretName: sds-secret
+      - name: sds-cache
+        emptyDir: {}
 
 ---
 kind: Service
@@ -40,7 +59,8 @@ metadata:
   name: sigplot-data-service
 spec:
   ports:
-  - port: 1338
+  - port: 5055
+    targetPort: http
     protocol: TCP
   selector:
     app: sigplot-data-service
@@ -52,7 +72,7 @@ metadata:
   name: sigplot-data-service
 spec:
   rules:
-  - host: ...
+  - host: sds.example.com
     http:
       paths:
       - path: /
@@ -61,4 +81,4 @@ spec:
           service:
             name: sigplot-data-service
             port:
-              number: 1338
+              number: 5055

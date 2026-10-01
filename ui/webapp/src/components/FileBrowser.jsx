@@ -2,19 +2,25 @@ import React from 'react';
 
 export default function FileBrowser({
   locations,
+  locationsStatus,
   selectedLocation,
   onSelectLocation,
+  onRetryLocations,
   files,
+  filesStatus,
   onSelectFile,
   path,
   onGoBack,
 }) {
+  const locationList = Array.isArray(locations) ? locations : [];
+  const fileList = Array.isArray(files) ? files : [];
+
   return (
     <>
       <div className="location-panel">
         <h4>Choose Location:</h4>
         <ul className="list-group">
-          {locations.map((loc) => (
+          {locationList.map((loc) => (
             <button
               key={loc}
               className={`list-group-item${loc === selectedLocation ? ' active' : ''}`}
@@ -23,8 +29,19 @@ export default function FileBrowser({
               {loc}
             </button>
           ))}
-          {locations.length === 0 && (
+          {locationsStatus === 'loading' && locationList.length === 0 && (
             <p className="empty-message">Loading locations...</p>
+          )}
+          {locationsStatus === 'error' && (
+            <p className="empty-message">
+              Failed to load locations.
+              <button type="button" onClick={onRetryLocations}>
+                Retry
+              </button>
+            </p>
+          )}
+          {locationsStatus === 'success' && locationList.length === 0 && (
+            <p className="empty-message">No locations found</p>
           )}
         </ul>
       </div>
@@ -40,7 +57,13 @@ export default function FileBrowser({
         </div>
         {selectedLocation ? (
           <ul className="list-group">
-            {files.map((file) => (
+            {filesStatus === 'loading' && (
+              <p className="empty-message">Loading files...</p>
+            )}
+            {filesStatus === 'error' && (
+              <p className="empty-message">Failed to load files.</p>
+            )}
+            {filesStatus === 'success' && fileList.map((file) => (
               <button
                 key={file.filename}
                 className="list-group-item"
@@ -51,7 +74,7 @@ export default function FileBrowser({
                 </p>
               </button>
             ))}
-            {files.length === 0 && (
+            {filesStatus === 'success' && fileList.length === 0 && (
               <p className="empty-message">No files found</p>
             )}
           </ul>

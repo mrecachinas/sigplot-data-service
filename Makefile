@@ -1,5 +1,8 @@
 GOCMD=CGO_ENABLED=0 go
-GOFLAGS=-a -ldflags '-w -extldflags "-static"' -mod vendor
+GO_BUILD_FLAGS=-trimpath -ldflags '-s -w -extldflags "-static"' -mod vendor
+BIN=sigplot_data_service
+IMAGE=sds:0.7
+FUZZTIME ?= 10s
 
 .PHONY: all ui sds sds-ui docker \
 	fmt vet lint test test-race test-fuzz check clean
@@ -13,13 +16,13 @@ ui:
 	npm --prefix ./ui/webapp run build
 
 sds:
-	$(GOCMD) build $(GOFLAGS) cmd/sds/sigplot_data_service.go
+	$(GOCMD) build $(GO_BUILD_FLAGS) -o $(BIN) ./cmd/sds
 
 sds-ui: ui
-	$(GOCMD) build $(GOFLAGS) -tags ui cmd/sds/sigplot_data_service.go
+	$(GOCMD) build $(GO_BUILD_FLAGS) -tags ui -o $(BIN) ./cmd/sds
 
 docker:
-	docker build -t sds:0.7 .
+	docker build -t $(IMAGE) .
 
 # --- Code quality targets ---
 
@@ -46,9 +49,9 @@ test-race:
 	go test ./... -race -count=1
 
 test-fuzz:
-	@echo "==> Running fuzz tests (10s each)..."
-	go test ./internal/bluefile/... -fuzz=FuzzConvertFileData -fuzztime=10s
-	go test ./internal/image/... -fuzz=FuzzTransform -fuzztime=10s
+	@echo "==> Running fuzz tests ($(FUZZTIME) each)..."
+	go test ./internal/bluefile -run=^$$ -fuzz=^FuzzConvertFileData$$ -fuzztime=$(FUZZTIME)
+	go test ./internal/image -run=^$$ -fuzz=^FuzzTransform$$ -fuzztime=$(FUZZTIME)
 
 # --- Combined targets ---
 
@@ -56,5 +59,6 @@ check: fmt vet lint test
 	@echo "==> All checks passed."
 
 clean:
-	@rm -f sigplot_data_service
+	@rm -f $(BIN)
 	@rm -rf sdscache/
+	@rm -rf ui/webapp/dist/

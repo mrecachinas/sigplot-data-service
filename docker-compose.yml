@@ -1,6 +1,6 @@
 services:
   minio:
-    image: minio/minio:latest
+    image: elestio/minio:latest
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"
@@ -18,7 +18,7 @@ services:
 
   # Creates the default bucket on startup
   minio-init:
-    image: minio/mc:latest
+    image: elestio/minio:latest
     depends_on:
       minio:
         condition: service_healthy
@@ -28,13 +28,14 @@ services:
       /bin/sh -c "
       mc alias set local http://minio:9000 minio miniostorage;
       mc mb --ignore-existing local/sdsdata;
-      mc cp /data/*.tmp local/sdsdata/;
+      mc cp --recursive /data/ local/sdsdata/;
       echo 'Bucket sdsdata ready with example files:';
       mc ls local/sdsdata/;
       "
 
   sds:
     build: .
+    image: sds:0.7
     ports:
       - "5055:5055"
     depends_on:

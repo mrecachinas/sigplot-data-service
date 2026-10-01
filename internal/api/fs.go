@@ -1,23 +1,26 @@
 package api
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"github.com/labstack/echo/v4"
 	minio "github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/spectriclabs/sigplot-data-service/internal/bluefile"
 	"github.com/spectriclabs/sigplot-data-service/internal/config"
 	"github.com/spectriclabs/sigplot-data-service/internal/sds"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 )
+
+type safeFileLocation struct {
+	LocationName string `json:"location_name"`
+	LocationType string `json:"location_type"`
+}
 
 func (a *API) GetBluefileHeader(c echo.Context) error {
 	filePath := c.Param("*")
@@ -25,6 +28,9 @@ func (a *API) GetBluefileHeader(c echo.Context) error {
 	reader, err := sds.OpenDataSource(a.Cfg, a.Cache, locationName, filePath)
 	if err != nil {
 		return c.String(http.StatusBadRequest, err.Error())
+	}
+	if closer, ok := reader.(io.Closer); ok {
+		defer closer.Close()
 	}
 
 	if strings.Contains(filePath, ".tmp") || strings.Contains(filePath, ".prm") {
@@ -83,17 +89,16 @@ func (a *API) GetFileContents(c echo.Context, locationName string, filePath stri
 	reader, err := sds.OpenDataSource(a.Cfg, a.Cache, locationName, filePath)
 	if err != nil {
 		c.Logger().Error(err)
+		if sds.IsInvalidPath(err) {
+			return c.String(http.StatusBadRequest, err.Error())
+		}
 		return c.String(http.StatusInternalServerError, err.Error())
 	}
-
-	var contentType string
-	if strings.Contains(filePath, ".tmp") || strings.Contains(filePath, ".prm") {
-		contentType = "application/bluefile"
-	} else {
-		contentType = "application/binary"
+	if closer, ok := reader.(io.Closer); ok {
+		defer closer.Close()
 	}
 
-	return c.Stream(http.StatusOK, contentType, reader)
+	return c.Stream(http.StatusOK, sds.ContentTypeForPath(filePath), reader)
 }
 
 func (a *API) GetDirectoryContents(c echo.Context, directoryPath string) error {
@@ -117,7 +122,14 @@ func (a *API) GetDirectoryContents(c echo.Context, directoryPath string) error {
 }
 
 func (a *API) GetFileLocations(c echo.Context) error {
-	return c.JSON(200, a.Cfg.LocationDetails)
+	locations := make([]safeFileLocation, 0, len(a.Cfg.LocationDetails))
+	for _, location := range a.Cfg.LocationDetails {
+		locations = append(locations, safeFileLocation{
+			LocationName: location.LocationName,
+			LocationType: location.LocationType,
+		})
+	}
+	return c.JSON(200, locations)
 }
 
 func (a *API) GetFileOrDirectory(c echo.Context) error {
@@ -144,8 +156,10 @@ func (a *API) GetFileOrDirectory(c echo.Context) error {
 
 	switch currentLocation.LocationType {
 	case "localFile":
-		// Join the provided file path with the configured path
-		joinedFilePath := path.Join(currentLocation.Path, filePath)
+		joinedFilePath, err := sds.ResolvePath(currentLocation.Path, filePath)
+		if err != nil {
+			return c.String(http.StatusBadRequest, err.Error())
+		}
 
 		// Make sure the joined path exists
 		fi, err := os.Stat(joinedFilePath)
@@ -166,48 +180,51 @@ func (a *API) GetFileOrDirectory(c echo.Context) error {
 		}
 
 	case "minio":
-		minioClient, err := minio.New(currentLocation.Location, &minio.Options{
-			Creds:  credentials.NewStaticV4(currentLocation.MinioAccessKey, currentLocation.MinioSecretKey, ""),
-			Secure: currentLocation.MinioUseSSL,
-		})
+		objectKey, err := sds.ResolveObjectKey(currentLocation.Path, filePath)
+		if err != nil {
+			return c.String(http.StatusBadRequest, err.Error())
+		}
+		prefix, err := sds.ObjectListPrefix(currentLocation.Path, filePath)
+		if err != nil {
+			return c.String(http.StatusBadRequest, err.Error())
+		}
+		minioClient, err := sds.MinioClientForLocation(currentLocation)
 		if err != nil {
 			log.Println("Error establishing connection to MinIO", err)
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		ctx := context.Background()
+		ctx := c.Request().Context()
 
 		// If filePath is non-empty, try to get it as a file first
 		if filePath != "" && !strings.HasSuffix(filePath, "/") {
-			objectFd, err := minioClient.GetObject(ctx, currentLocation.MinioBucket, filePath, minio.GetObjectOptions{})
+			objectFd, err := minioClient.GetObject(ctx, currentLocation.MinioBucket, objectKey, minio.GetObjectOptions{})
 			if err == nil {
 				_, statErr := objectFd.Stat()
 				if statErr == nil {
-					var contentType string
-					if strings.Contains(filePath, ".tmp") || strings.Contains(filePath, ".prm") {
-						contentType = "application/bluefile"
-					} else {
-						contentType = "application/binary"
-					}
-					return c.Stream(http.StatusOK, contentType, objectFd)
+					defer objectFd.Close()
+					return c.Stream(http.StatusOK, sds.ContentTypeForPath(filePath), objectFd)
 				}
+				objectFd.Close()
 			}
 		}
-
 		// List directory contents
 		objectCh := minioClient.ListObjects(ctx, currentLocation.MinioBucket, minio.ListObjectsOptions{
-			Prefix:    filePath,
+			Prefix:    prefix,
 			Recursive: false,
 		})
 
-		var filelist []sds.File
+		filelist := []sds.File{}
 		for object := range objectCh {
 			if object.Err != nil {
 				log.Println("Error listing MinIO objects", object.Err)
 				return c.String(http.StatusInternalServerError, object.Err.Error())
 			}
+			if object.Key == prefix {
+				continue
+			}
 			var f sds.File
-			name := filepath.Base(strings.TrimSuffix(object.Key, "/"))
+			name := path.Base(strings.TrimSuffix(object.Key, "/"))
 			f.Filename = name
 			if strings.HasSuffix(object.Key, "/") {
 				f.Type = "directory"

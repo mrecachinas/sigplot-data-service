@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"io/fs"
 	"net/http"
 )
 
@@ -16,7 +17,13 @@ var stubHTML = []byte(`<!DOCTYPE html>
 
 // GetFileSystem returns an empty filesystem when UI is not built in
 func GetFileSystem() http.FileSystem {
-	return http.Dir(".")
+	return emptyFileSystem{}
+}
+
+type emptyFileSystem struct{}
+
+func (emptyFileSystem) Open(string) (http.File, error) {
+	return nil, fs.ErrNotExist
 }
 
 // LoadUI returns a stub HTML page when UI is not built in

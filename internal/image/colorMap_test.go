@@ -43,6 +43,25 @@ func TestGetColorControlPointsUnknownFallsBackToRamp(t *testing.T) {
 	}
 }
 
+func TestGetCachedPaletteNormalizesUnknownNames(t *testing.T) {
+	paletteMu.Lock()
+	paletteCache = make(map[paletteKey][]Pixel)
+	paletteMu.Unlock()
+
+	unknownA := GetCachedPalette("missing-a", 500)
+	unknownB := GetCachedPalette("missing-b", 500)
+	ramp := GetCachedPalette("Ramp Colormap", 500)
+
+	if &unknownA[0] != &unknownB[0] || &unknownA[0] != &ramp[0] {
+		t.Fatalf("unknown palettes were not normalized to cached Ramp palette")
+	}
+	paletteMu.RLock()
+	defer paletteMu.RUnlock()
+	if len(paletteCache) != 1 {
+		t.Fatalf("palette cache entries = %d, want 1", len(paletteCache))
+	}
+}
+
 func TestMakeColorPaletteLength(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -81,6 +100,25 @@ func TestMakeColorPaletteTwoPointGradient(t *testing.T) {
 	// Colors should generally increase from start to end
 	if palette[numColors-1].Red <= palette[0].Red {
 		t.Errorf("last color Red (%v) should be > first color Red (%v)", palette[numColors-1].Red, palette[0].Red)
+	}
+}
+
+func TestMakeRampColorPaletteExactSamples(t *testing.T) {
+	palette := MakeColorPalette(GetColorControlPoints("Ramp Colormap"), 500)
+	expected := map[int][3]int{
+		0:   {0, 0, 38},
+		50:  {0, 0, 128},
+		155: {0, 166, 191},
+		250: {0, 217, 0},
+		350: {191, 204, 0},
+		415: {255, 153, 0},
+		499: {255, 0, 0},
+	}
+	for idx, want := range expected {
+		got := [3]int{int(palette[idx].Red), int(palette[idx].Green), int(palette[idx].Blue)}
+		if got != want {
+			t.Errorf("palette[%d] = %v, want %v", idx, got, want)
+		}
 	}
 }
 

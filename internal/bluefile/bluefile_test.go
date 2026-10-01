@@ -39,6 +39,15 @@ func TestGetFileTypeInfo(t *testing.T) {
 	}
 }
 
+func TestGetFileTypeInfoInvalidFormat(t *testing.T) {
+	for _, format := range []string{"", "S", "X", "XX", "CZ"} {
+		bpa, isComplex := GetFileTypeInfo(format)
+		if bpa != 0 || isComplex {
+			t.Errorf("GetFileTypeInfo(%q) = (%v, %v), want (0, false)", format, bpa, isComplex)
+		}
+	}
+}
+
 func TestConvertFileDataSF(t *testing.T) {
 	// Create 4 bytes representing float32(3.14)
 	var f float32 = 3.14
@@ -160,5 +169,21 @@ func TestConvertFileDataEmptyInput(t *testing.T) {
 	out := ConvertFileData([]byte{}, "SF")
 	if len(out) != 0 {
 		t.Errorf("len = %d, want 0", len(out))
+	}
+}
+
+func TestConvertFileDataInvalidFormat(t *testing.T) {
+	for _, format := range []string{"", "S", "XX", "CZ"} {
+		out := ConvertFileData([]byte{1, 2, 3, 4}, format)
+		if len(out) != 0 {
+			t.Errorf("ConvertFileData(%q) len = %d, want 0", format, len(out))
+		}
+	}
+}
+
+func TestConvertFileDataIgnoresTrailingPartialAtom(t *testing.T) {
+	out := ConvertFileData([]byte{1, 0, 2}, "SI")
+	if len(out) != 1 || out[0] != 1 {
+		t.Fatalf("ConvertFileData trailing partial = %v, want [1]", out)
 	}
 }

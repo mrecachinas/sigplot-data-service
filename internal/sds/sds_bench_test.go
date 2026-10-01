@@ -19,7 +19,7 @@ func BenchmarkGetBytesFromReader(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			GetBytesFromReader(reader, 0, 4096)
+			getBytesFromReaderMu(reader, 0, 4096, IoMutex)
 		}
 	})
 
@@ -29,7 +29,7 @@ func BenchmarkGetBytesFromReader(b *testing.B) {
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				GetBytesFromReader(reader, 0, 4096)
+				getBytesFromReaderMu(reader, 0, 4096, IoMutex)
 			}
 		})
 	})
@@ -59,6 +59,7 @@ func BenchmarkProcessLine(b *testing.B) {
 			Outxsize:       100,
 			Transform:      "mean",
 			Reader:         reader,
+			ReaderMutex:    &sync.Mutex{},
 		}
 
 		b.ReportAllocs()
@@ -107,12 +108,5 @@ func BenchmarkComputeYSize(b *testing.B) {
 				req.ComputeYSize()
 			}
 		})
-	}
-}
-
-// Verify IoMutex is initialized
-func init() {
-	if IoMutex == nil {
-		IoMutex = &sync.Mutex{}
 	}
 }
