@@ -20,40 +20,6 @@ function Icon({ children, size = 16, ...props }) {
   );
 }
 
-export const FolderIcon = (props) => (
-  <Icon {...props}>
-    <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.38a1.5 1.5 0 0 1 1.06.44L11.5 8h8A1.5 1.5 0 0 1 21 9.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" />
-  </Icon>
-);
-
-export const FileIcon = (props) => (
-  <Icon {...props}>
-    <path d="M14 3H7.5A1.5 1.5 0 0 0 6 4.5v15A1.5 1.5 0 0 0 7.5 21h9a1.5 1.5 0 0 0 1.5-1.5V7z" />
-    <path d="M14 3v4h4" />
-    <path d="M9 15l1.5-2 1.5 3 1.5-4 1.5 3" />
-  </Icon>
-);
-
-export const ChevronRightIcon = (props) => (
-  <Icon {...props}>
-    <path d="M9 6l6 6-6 6" />
-  </Icon>
-);
-
-export const ArrowUpIcon = (props) => (
-  <Icon {...props}>
-    <path d="M12 19V5" />
-    <path d="M6 11l6-6 6 6" />
-  </Icon>
-);
-
-export const SearchIcon = (props) => (
-  <Icon {...props}>
-    <circle cx="11" cy="11" r="6.5" />
-    <path d="M20 20l-4.2-4.2" />
-  </Icon>
-);
-
 export const SidebarIcon = (props) => (
   <Icon {...props}>
     <rect x="3" y="4.5" width="18" height="15" rx="2" />

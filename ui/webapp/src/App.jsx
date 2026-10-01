@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import FileBrowser from './components/FileBrowser';
 import { ColumnsIcon, RowsIcon, SidebarIcon, WaveformIcon } from './components/icons';
-import { getLocations, getFiles, getFileUrl } from './api/sds';
+import { getLocations, getFileUrl } from './api/sds';
 
 const loadSigPlotViewer = () => import('./components/SigPlotViewer');
 const SigPlotViewer = lazy(loadSigPlotViewer);
@@ -32,7 +32,7 @@ const LAYOUTS = [
   { id: 'columns', label: 'Side by side', Icon: ColumnsIcon },
 ];
 
-function EmptyState({ hasLocation }) {
+function EmptyState({ hasLocations }) {
   return (
     <div className="empty-state" role="status">
       <div className="empty-state-icon">
@@ -40,9 +40,9 @@ function EmptyState({ hasLocation }) {
       </div>
       <p className="empty-state-title">No file selected</p>
       <p className="empty-state-text">
-        {hasLocation
-          ? 'Select a file from the sidebar to plot it.'
-          : 'Choose a location, then select a file to plot it.'}
+        {hasLocations
+          ? 'Open a location in the sidebar and select a file to plot it.'
+          : 'Waiting for data locations.'}
       </p>
     </div>
   );
@@ -51,11 +51,7 @@ function EmptyState({ hasLocation }) {
 export default function App() {
   const [locations, setLocations] = useState([]);
   const [locationsStatus, setLocationsStatus] = useState('loading');
-  const [selectedLocation, setSelectedLocation] = useState('');
-  const [files, setFiles] = useState([]);
-  const [filesStatus, setFilesStatus] = useState('idle');
-  const [path, setPath] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selected, setSelected] = useState(null);
   const [sidebarOpen, setSidebarOpen] = usePersistentState('sds.sidebarOpen', true);
   const [layout, setLayout] = usePersistentState('sds.plotLayout', 'stacked');
 
@@ -65,7 +61,6 @@ export default function App() {
       const locs = await getLocations({ signal });
       setLocations(locs);
       setLocationsStatus('success');
-      setSelectedLocation((current) => current || locs[0] || '');
     } catch (error) {
       if (error.name === 'AbortError') return;
       setLocations([]);
@@ -79,75 +74,32 @@ export default function App() {
     return () => controller.abort();
   }, [fetchLocations]);
 
-  useEffect(() => {
-    if (!selectedLocation) {
-      setFiles([]);
-      setFilesStatus('idle');
-      return;
-    }
-    let ignore = false;
-    const controller = new AbortController();
-    const fetchFiles = async () => {
-      setFilesStatus('loading');
-      try {
-        const fileList = await getFiles(selectedLocation, path, {
-          signal: controller.signal,
-        });
-        if (ignore) return;
-        setFiles(Array.isArray(fileList) ? fileList : []);
-        setFilesStatus('success');
-      } catch (error) {
-        if (ignore || error.name === 'AbortError') return;
-        setFiles([]);
-        setFilesStatus('error');
-      }
-    };
-    fetchFiles();
-    return () => {
-      ignore = true;
-      controller.abort();
-    };
-  }, [selectedLocation, path]);
-
   // Fetch the plotting chunk while the user browses, so it's ready by the
   // time a file is picked.
   useEffect(() => {
-    if (selectedLocation) loadSigPlotViewer().catch(() => {});
-  }, [selectedLocation]);
-
-  const handleSelectLocation = useCallback((loc) => {
-    setSelectedLocation(loc);
-    setPath('');
-    setSelectedFile(null);
-  }, []);
+    if (locations.length) loadSigPlotViewer().catch(() => {});
+  }, [locations]);
 
   const handleSelectFile = useCallback(
-    (file) => {
-      if (file.type === 'directory') {
-        setPath((prev) => (prev ? `${prev}/${file.filename}` : file.filename));
-      } else {
-        setSelectedFile(path ? `${path}/${file.filename}` : file.filename);
-        // On narrow screens the sidebar overlays the plots; get it out of the way.
-        if (window.matchMedia?.(NARROW_QUERY).matches) setSidebarOpen(false);
-      }
+    (target) => {
+      setSelected(target);
+      // On narrow screens the sidebar overlays the plots; get it out of the way.
+      if (window.matchMedia?.(NARROW_QUERY).matches) setSidebarOpen(false);
     },
-    [path, setSidebarOpen]
+    [setSidebarOpen]
   );
 
   const hrefs = useMemo(
     () =>
-      selectedFile
+      selected
         ? {
-            raw: getFileUrl(selectedFile, 'fs', selectedLocation),
-            sds: getFileUrl(selectedFile, 'hdr', selectedLocation),
+            raw: getFileUrl(selected.path, 'fs', selected.location),
+            sds: getFileUrl(selected.path, 'hdr', selected.location),
+            name: `${selected.location}/${selected.path}`,
           }
         : null,
-    [selectedFile, selectedLocation]
+    [selected]
   );
-
-  const handleGoBack = useCallback(() => {
-    setPath((prev) => prev.split('/').slice(0, -1).join('/'));
-  }, []);
 
   const toggleLabel = sidebarOpen ? 'Hide file browser' : 'Show file browser';
 
@@ -193,16 +145,8 @@ export default function App() {
           <FileBrowser
             locations={locations}
             locationsStatus={locationsStatus}
-            selectedLocation={selectedLocation}
-            onSelectLocation={handleSelectLocation}
             onRetryLocations={() => fetchLocations()}
-            files={files}
-            filesStatus={filesStatus}
             onSelectFile={handleSelectFile}
-            selectedFile={selectedFile}
-            path={path}
-            onGoBack={handleGoBack}
-            onNavigate={setPath}
           />
         </aside>
         <main className={`plots plots-${layout === 'columns' ? 'columns' : 'stacked'}`}>
@@ -215,10 +159,10 @@ export default function App() {
                 </div>
               }
             >
-              <SigPlotViewer rawHref={hrefs.raw} sdsHref={hrefs.sds} fileName={selectedFile} />
+              <SigPlotViewer rawHref={hrefs.raw} sdsHref={hrefs.sds} fileName={hrefs.name} />
             </Suspense>
           ) : (
-            <EmptyState hasLocation={Boolean(selectedLocation)} />
+            <EmptyState hasLocations={locations.length > 0} />
           )}
         </main>
       </div>
