@@ -18,6 +18,8 @@ vi.mock('sigplot', () => ({
       remove_layer: vi.fn(),
       checkresize: vi.fn(),
       change_settings: vi.fn(),
+      mimic: vi.fn(),
+      unmimic: vi.fn(),
       disable_listeners: vi.fn(),
       overlay_href: vi.fn((href, callbacks) => {
         const layer = `layer:${href}`;
@@ -215,5 +217,32 @@ describe('SigPlotViewer', () => {
     expect(raw.change_settings.mock.invocationCallOrder.at(-1)).toBeLessThan(
       raw.overlay_href.mock.invocationCallOrder.at(-1)
     );
+  });
+
+  it('mirrors zoom, unzoom and pan between the two plots', () => {
+    const { unmount } = render(<SigPlotViewer rawHref="/a.tmp" sdsHref="/a.hdr" />);
+    const [raw, sds] = instances;
+    const mask = { zoom: true, unzoom: true, pan: true };
+
+    expect(raw.mimic).toHaveBeenCalledWith(sds, mask);
+    expect(sds.mimic).toHaveBeenCalledWith(raw, mask);
+
+    unmount();
+
+    expect(raw.unmimic).toHaveBeenCalled();
+    expect(sds.unmimic).toHaveBeenCalled();
+  });
+
+  it('links the plots only once both exist', () => {
+    size = { width: 0, height: 0 };
+    render(<SigPlotViewer rawHref="/a.tmp" sdsHref="/a.hdr" />);
+    expect(instances).toHaveLength(0);
+
+    size = { width: 900, height: 300 };
+    triggerResize();
+
+    const [raw, sds] = instances;
+    expect(raw.mimic).toHaveBeenCalledTimes(1);
+    expect(sds.mimic).toHaveBeenCalledTimes(1);
   });
 });

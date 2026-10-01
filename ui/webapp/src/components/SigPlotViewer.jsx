@@ -15,6 +15,10 @@ const PLOT_OPTIONS = {
 const RAW_LAYER_OPTIONS = { lpb: Infinity };
 const SDS_LAYER_OPTIONS = { layerType: 'SDS' };
 
+// Both panels show the same file on the same axes, so zooming, unzooming or
+// panning one plot is mirrored on the other.
+const MIRROR = { zoom: true, unzoom: true, pan: true };
+
 function removeLayer(plot, layer) {
   if (!plot || layer == null) return;
   if (Array.isArray(layer)) {
@@ -28,9 +32,11 @@ function hasSize(el) {
   return el.clientWidth > 0 && el.clientHeight > 0;
 }
 
-function SigPlotPanel({ href, layerOptions, title, fileName }) {
+function SigPlotPanel({ href, layerOptions, title, fileName, onPlot }) {
   const containerRef = useRef(null);
   const latestHrefRef = useRef(null);
+  const onPlotRef = useRef(onPlot);
+  onPlotRef.current = onPlot;
   const [plot, setPlot] = useState(null);
   const [status, setStatus] = useState('idle');
 
@@ -51,6 +57,7 @@ function SigPlotPanel({ href, layerOptions, title, fileName }) {
       if (canObserve && !hasSize(el)) return;
       instance = new Plot(el, PLOT_OPTIONS);
       setPlot(instance);
+      onPlotRef.current?.(instance);
     };
 
     sync();
@@ -60,6 +67,7 @@ function SigPlotPanel({ href, layerOptions, title, fileName }) {
     return () => {
       if (observer) observer.disconnect();
       latestHrefRef.current = null;
+      if (instance) onPlotRef.current?.(null);
       if (instance) {
         if (instance.deoverlay) instance.deoverlay();
         if (instance.disable_listeners) instance.disable_listeners();
@@ -132,6 +140,20 @@ function SigPlotPanel({ href, layerOptions, title, fileName }) {
 }
 
 export default function SigPlotViewer({ rawHref, sdsHref, fileName }) {
+  const [rawPlot, setRawPlot] = useState(null);
+  const [sdsPlot, setSdsPlot] = useState(null);
+
+  useEffect(() => {
+    if (!rawPlot?.mimic || !sdsPlot?.mimic) return undefined;
+    // SigPlot's zoom/pan guards stop the two listeners from echoing forever.
+    rawPlot.mimic(sdsPlot, MIRROR);
+    sdsPlot.mimic(rawPlot, MIRROR);
+    return () => {
+      rawPlot.unmimic();
+      sdsPlot.unmimic();
+    };
+  }, [rawPlot, sdsPlot]);
+
   return (
     <>
       <SigPlotPanel
@@ -139,12 +161,14 @@ export default function SigPlotViewer({ rawHref, sdsHref, fileName }) {
         layerOptions={RAW_LAYER_OPTIONS}
         title="Raw file"
         fileName={fileName}
+        onPlot={setRawPlot}
       />
       <SigPlotPanel
         href={sdsHref}
         layerOptions={SDS_LAYER_OPTIONS}
         title="SDS tiled"
         fileName={fileName}
+        onPlot={setSdsPlot}
       />
     </>
   );
