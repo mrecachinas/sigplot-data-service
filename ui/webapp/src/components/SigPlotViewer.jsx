@@ -1,13 +1,19 @@
-import React, { useRef, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Plot } from 'sigplot';
 import { AlertIcon } from './icons';
 
 const PLOT_OPTIONS = {
   all: true,
   expand: true,
-  autol: 100,
   autohide_panbars: true,
 };
+
+// SigPlot color-scales a raster from only its first 16 lines by default, so
+// a file that starts with a constant band (like mydata_SB_600_600.tmp) comes
+// out a single color. Scanning every line uses the whole file's z range,
+// which is what SDS does server-side for the tiled view.
+const RAW_LAYER_OPTIONS = { lpb: Infinity };
+const SDS_LAYER_OPTIONS = { layerType: 'SDS' };
 
 function removeLayer(plot, layer) {
   if (!plot || layer == null) return;
@@ -66,6 +72,10 @@ function SigPlotPanel({ href, layerOptions, title, fileName }) {
     if (!plot) return undefined;
     latestHrefRef.current = href;
     plot.deoverlay();
+    // SigPlot builds the plot note (the file name drawn in the corner) only
+    // while it is empty and never clears it on deoverlay, so a reused plot
+    // would keep showing the first file's name.
+    if (plot.change_settings) plot.change_settings({ note: '' });
     if (!href) {
       setStatus('idle');
       return undefined;
@@ -122,14 +132,17 @@ function SigPlotPanel({ href, layerOptions, title, fileName }) {
 }
 
 export default function SigPlotViewer({ rawHref, sdsHref, fileName }) {
-  const sdsLayerOptions = useMemo(() => ({ layerType: 'SDS' }), []);
-
   return (
     <>
-      <SigPlotPanel href={rawHref} title="Raw file" fileName={fileName} />
+      <SigPlotPanel
+        href={rawHref}
+        layerOptions={RAW_LAYER_OPTIONS}
+        title="Raw file"
+        fileName={fileName}
+      />
       <SigPlotPanel
         href={sdsHref}
-        layerOptions={sdsLayerOptions}
+        layerOptions={SDS_LAYER_OPTIONS}
         title="SDS tiled"
         fileName={fileName}
       />

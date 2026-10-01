@@ -17,6 +17,7 @@ vi.mock('sigplot', () => ({
       deoverlay: vi.fn(),
       remove_layer: vi.fn(),
       checkresize: vi.fn(),
+      change_settings: vi.fn(),
       disable_listeners: vi.fn(),
       overlay_href: vi.fn((href, callbacks) => {
         const layer = `layer:${href}`;
@@ -95,10 +96,12 @@ describe('SigPlotViewer', () => {
     expect(rawPlot.remove_layer).not.toHaveBeenCalledWith('layer:/second.tmp');
   });
 
-  it('loads the SDS layer type only in the tiled panel', () => {
+  it('scales raw rasters over every line and uses the SDS layer for the tiled panel', () => {
     render(<SigPlotViewer rawHref="/raw.tmp" sdsHref="/sds.tmp" />);
 
-    expect(instances[0].overlay_href).toHaveBeenCalledWith('/raw.tmp', callbacks, undefined);
+    expect(instances[0].overlay_href).toHaveBeenCalledWith('/raw.tmp', callbacks, {
+      lpb: Infinity,
+    });
     expect(instances[1].overlay_href).toHaveBeenCalledWith('/sds.tmp', callbacks, {
       layerType: 'SDS',
     });
@@ -149,7 +152,9 @@ describe('SigPlotViewer', () => {
     triggerResize();
 
     expect(Plot).toHaveBeenCalledTimes(2);
-    expect(instances[0].overlay_href).toHaveBeenCalledWith('/a.tmp', callbacks, undefined);
+    expect(instances[0].overlay_href).toHaveBeenCalledWith('/a.tmp', callbacks, {
+      lpb: Infinity,
+    });
     expect(instances[1].overlay_href).toHaveBeenCalledWith('/b.tmp', callbacks, {
       layerType: 'SDS',
     });
@@ -194,5 +199,21 @@ describe('SigPlotViewer', () => {
 
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByRole('region', { name: 'Raw file' })).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('clears the plot note before loading the next file', () => {
+    const { rerender } = render(<SigPlotViewer rawHref="/first.tmp" sdsHref={null} />);
+    const raw = instances[0];
+    raw.change_settings.mockClear();
+
+    rerender(<SigPlotViewer rawHref="/second.tmp" sdsHref={null} />);
+
+    expect(raw.change_settings).toHaveBeenCalledWith({ note: '' });
+    expect(raw.deoverlay.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      raw.change_settings.mock.invocationCallOrder.at(-1)
+    );
+    expect(raw.change_settings.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      raw.overlay_href.mock.invocationCallOrder.at(-1)
+    );
   });
 });
